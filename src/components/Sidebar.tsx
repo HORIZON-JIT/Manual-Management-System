@@ -11,7 +11,7 @@ import { getAllInstructions } from '@/lib/storage';
 import { getOfficialCounts, getPendingCategories } from '@/lib/categoryRegistry';
 import GoogleSignInButton from './GoogleSignInButton';
 import DriveFolderPicker from './DriveFolderPicker';
-import { getTargetFolder, DriveFolder } from '@/lib/googleDrive';
+import { getTargetFolder, DriveFolder, bulkImportFromDrive } from '@/lib/googleDrive';
 import {
   isGoogleConfigured, getAuthState, addAuthListener,
   initGoogleAuth, signOut, GoogleAuthState,
@@ -51,8 +51,16 @@ export default function Sidebar() {
     return pathname.startsWith(href);
   };
 
-  const handleFolderSelected = (folder: DriveFolder | null) => {
+  const handleFolderSelected = async (folder: DriveFolder | null) => {
     setCurrentFolder(folder ?? getTargetFolder());
+    if (folder) {
+      try {
+        const { imported } = await bulkImportFromDrive();
+        if (imported > 0) alert(`${imported}件の手順書を読み込みました`);
+      } catch {
+        // ignore
+      }
+    }
   };
 
   const handleFolderClick = () => {

@@ -7,7 +7,7 @@ import { Search, Plus, ChevronRight, Home, Folder, HelpCircle } from 'lucide-rea
 import HelpModal from './HelpModal';
 import DriveFolderPicker from './DriveFolderPicker';
 import GoogleSignInButton from './GoogleSignInButton';
-import { getTargetFolder, DriveFolder } from '@/lib/googleDrive';
+import { getTargetFolder, DriveFolder, bulkImportFromDrive } from '@/lib/googleDrive';
 import { isGoogleConfigured, getAuthState, signIn } from '@/lib/googleAuth';
 
 function useBreadcrumb(pathname: string): { label: string; href?: string }[] {
@@ -88,8 +88,16 @@ export default function AppHeader() {
     }
   };
 
-  const handleFolderSelected = (folder: DriveFolder | null) => {
+  const handleFolderSelected = async (folder: DriveFolder | null) => {
     setCurrentFolder(folder ?? getTargetFolder());
+    if (folder) {
+      try {
+        const { imported } = await bulkImportFromDrive();
+        if (imported > 0) alert(`${imported}件の手順書を読み込みました`);
+      } catch {
+        // ignore import errors
+      }
+    }
   };
 
   if (pathname === '/') return null;
