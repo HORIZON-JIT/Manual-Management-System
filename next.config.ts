@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const isProd = process.env.NODE_ENV === "production";
-const repoName = process.env.NEXT_PUBLIC_REPO_NAME || "FC";
+const repoName = process.env.NEXT_PUBLIC_REPO_NAME || "Manual-Management-System";
 
 const nextConfig: NextConfig = {
   output: "export",
