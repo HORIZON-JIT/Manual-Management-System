@@ -1,4 +1,5 @@
 import { WorkInstruction } from '@/types/instruction';
+import { importInstruction } from '@/lib/storage';
 
 const DEFAULT_FOLDER_NAME = 'WorkInstructions';
 const FILE_NAME = 'work_instructions.json';
@@ -9,37 +10,18 @@ export interface DriveFolder {
   name: string;
 }
 
-interface DriveFile {
-  id: string;
-  name: string;
-  mimeType: string;
-}
-
-interface DriveFileList {
-  files: DriveFile[];
-}
-
-interface SharedDrive {
-  id: string;
-  name: string;
-}
-
-interface SharedDriveList {
-  drives: SharedDrive[];
-}
-
-// --- Target folder management ---
+export type DriveLocation = 'my-drive' | 'shared-drives' | 'shared-with-me';
 
 export function getTargetFolder(): DriveFolder | null {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY_FOLDER);
-    return stored ? JSON.parse(stored) : null;
+    const raw = localStorage.getItem(STORAGE_KEY_FOLDER);
+    return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
 
-export function setTargetFolder(folder: DriveFolder | null): void {
+export function setTargetFolder(folder: DriveFolder | null) {
   if (folder) {
     localStorage.setItem(STORAGE_KEY_FOLDER, JSON.stringify(folder));
   } else {
@@ -47,106 +29,30 @@ export function setTargetFolder(folder: DriveFolder | null): void {
   }
 }
 
-// --- Drive location types ---
-
-export type DriveLocation = 'my-drive' | 'shared-drives' | 'shared-with-me';
-
-// --- Shared drives ---
-
-export async function listSharedDrives(): Promise<DriveFolder[]> {
-  const res = await gapi.client.request<SharedDriveList>({
-    path: 'https://www.googleapis.com/drive/v3/drives',
-    params: {
-      pageSize: '100',
-      fields: 'drives(id,name)',
-    },
-  });
-  return (res.result.drives || []).map((d) => ({ id: d.id, name: d.name }));
+interface DriveFileList {
+  files: { id: string; name: string }[];
 }
-
-// --- Folder browsing ---
-
-export async function listFolders(parentId?: string, options?: { driveId?: string }): Promise<DriveFolder[]> {
-  const parentQuery = parentId
-    ? `'${parentId}' in parents and`
-    : `'root' in parents and`;
-
-  const params: Record<string, string> = {
-    q: `${parentQuery} mimeType='application/vnd.google-apps.folder' and trashed=false`,
-    fields: 'files(id,name)',
-    orderBy: 'name',
-    pageSize: '100',
-    supportsAllDrives: 'true',
-    includeItemsFromAllDrives: 'true',
-  };
-
-  if (options?.driveId) {
-    params.corpora = 'drive';
-    params.driveId = options.driveId;
-  }
-
-  const res = await gapi.client.request<DriveFileList>({
-    path: 'https://www.googleapis.com/drive/v3/files',
-    params,
-  });
-  return res.result.files.map((f) => ({ id: f.id, name: f.name }));
-}
-
-export async function listSharedWithMeFolders(): Promise<DriveFolder[]> {
-  const res = await gapi.client.request<DriveFileList>({
-    path: 'https://www.googleapis.com/drive/v3/files',
-    params: {
-      q: "sharedWithMe=true and mimeType='application/vnd.google-apps.folder' and trashed=false",
-      fields: 'files(id,name)',
-      orderBy: 'name',
-      pageSize: '100',
-      supportsAllDrives: 'true',
-      includeItemsFromAllDrives: 'true',
-    },
-  });
-  return res.result.files.map((f) => ({ id: f.id, name: f.name }));
-}
-
-export async function createNewFolder(name: string, parentId?: string): Promise<DriveFolder> {
-  const body: Record<string, unknown> = {
-    name,
-    mimeType: 'application/vnd.google-apps.folder',
-  };
-  if (parentId) body.parents = [parentId];
-  const res = await gapi.client.request<DriveFile>({
-    path: 'https://www.googleapis.com/drive/v3/files',
-    method: 'POST',
-    params: { supportsAllDrives: 'true' },
-    body,
-  });
-  return { id: res.result.id, name: res.result.name };
-}
-
-// --- Internal helpers ---
 
 async function findDefaultFolder(): Promise<string | null> {
   const res = await gapi.client.request<DriveFileList>({
     path: 'https://www.googleapis.com/drive/v3/files',
     params: {
       q: `name='${DEFAULT_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-      fields: 'files(id,name)',
-      supportsAllDrives: 'true',
-      includeItemsFromAllDrives: 'true',
+      fields: 'files(id)',
+      pageSize: '1',
     },
   });
-  const files = res.result.files;
-  return files.length > 0 ? files[0].id : null;
+  return res.result.files[0]?.id ?? null;
 }
 
 async function createDefaultFolder(): Promise<string> {
-  const res = await gapi.client.request<DriveFile>({
+  const res = await gapi.client.request<{ id: string }>({
     path: 'https://www.googleapis.com/drive/v3/files',
     method: 'POST',
-    params: { supportsAllDrives: 'true' },
-    body: {
+    body: JSON.stringify({
       name: DEFAULT_FOLDER_NAME,
       mimeType: 'application/vnd.google-apps.folder',
-    },
+    }),
   });
   return res.result.id;
 }
@@ -160,17 +66,79 @@ async function getTargetFolderId(): Promise<string> {
 }
 
 async function findFile(folderId: string): Promise<string | null> {
+  const escapedName = FILE_NAME.replace(/'/g, "\\''");
   const res = await gapi.client.request<DriveFileList>({
     path: 'https://www.googleapis.com/drive/v3/files',
     params: {
-      q: `name='${FILE_NAME}' and '${folderId}' in parents and trashed=false`,
-      fields: 'files(id,name)',
+      q: `name='${escapedName}' and '${folderId}' in parents and trashed=false`,
+      fields: 'files(id)',
+      pageSize: '1',
       supportsAllDrives: 'true',
       includeItemsFromAllDrives: 'true',
     },
   });
-  const files = res.result.files;
-  return files.length > 0 ? files[0].id : null;
+  return res.result.files[0]?.id ?? null;
+}
+
+export async function listFolders(
+  parentId?: string,
+  options?: { driveId?: string },
+): Promise<DriveFolder[]> {
+  const parentClause = parentId
+    ? `'${parentId}' in parents`
+    : "'root' in parents";
+  const params: Record<string, string> = {
+    q: `${parentClause} and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    fields: 'files(id,name)',
+    orderBy: 'name',
+    pageSize: '100',
+  };
+  if (options?.driveId) {
+    params.driveId = options.driveId;
+    params.corpora = 'drive';
+    params.supportsAllDrives = 'true';
+    params.includeItemsFromAllDrives = 'true';
+  }
+  const res = await gapi.client.request<DriveFileList>({ path: 'https://www.googleapis.com/drive/v3/files', params });
+  return res.result.files.map((f) => ({ id: f.id, name: f.name }));
+}
+
+export async function listSharedDrives(): Promise<DriveFolder[]> {
+  const res = await gapi.client.request<{ drives: { id: string; name: string }[] }>({
+    path: 'https://www.googleapis.com/drive/v3/drives',
+    params: { pageSize: '50', fields: 'drives(id,name)' },
+  });
+  return (res.result.drives ?? []).map((d) => ({ id: d.id, name: d.name }));
+}
+
+export async function listSharedWithMeFolders(): Promise<DriveFolder[]> {
+  const res = await gapi.client.request<DriveFileList>({
+    path: 'https://www.googleapis.com/drive/v3/files',
+    params: {
+      q: "sharedWithMe=true and mimeType='application/vnd.google-apps.folder' and trashed=false",
+      fields: 'files(id,name)',
+      orderBy: 'name',
+      pageSize: '100',
+    },
+  });
+  return res.result.files.map((f) => ({ id: f.id, name: f.name }));
+}
+
+export async function createNewFolder(
+  name: string,
+  parentId?: string,
+): Promise<DriveFolder> {
+  const metadata: Record<string, unknown> = {
+    name,
+    mimeType: 'application/vnd.google-apps.folder',
+  };
+  if (parentId) metadata.parents = [parentId];
+  const res = await gapi.client.request<{ id: string; name: string }>({
+    path: 'https://www.googleapis.com/drive/v3/files',
+    method: 'POST',
+    body: JSON.stringify(metadata),
+  });
+  return { id: res.result.id, name: res.result.name };
 }
 
 export interface DriveFileInfo {
@@ -227,178 +195,169 @@ export async function uploadAsGoogleSheet(
     params: {
       q: `name='${escapedName}' and '${folderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`,
       fields: 'files(id)',
+      pageSize: '1',
       supportsAllDrives: 'true',
       includeItemsFromAllDrives: 'true',
     },
   });
-  const existingFileId = existingRes.result.files.length > 0 ? existingRes.result.files[0].id : null;
 
-  // Metadata: target mimeType = Google Sheets triggers conversion on Drive side
-  const metadata = existingFileId
-    ? { name: sheetName, mimeType: 'application/vnd.google-apps.spreadsheet' }
-    : { name: sheetName, mimeType: 'application/vnd.google-apps.spreadsheet', parents: [folderId] };
+  const existingId = existingRes.result.files[0]?.id;
 
-  const initUrl = existingFileId
-    ? `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=resumable&supportsAllDrives=true&fields=id`
-    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id';
-
-  const initRes = await fetch(initUrl, {
-    method: existingFileId ? 'PATCH' : 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json; charset=UTF-8',
-      'X-Upload-Content-Type': XLSX_MIME,
-      'X-Upload-Content-Length': String(buffer.byteLength),
-    },
-    body: JSON.stringify(metadata),
-  });
-
-  if (!initRes.ok) {
-    const errorText = await initRes.text();
-    throw new Error(`Drive API ${initRes.status}: ${errorText}`);
+  if (existingId) {
+    // Update existing file content
+    const updateRes = await fetch(
+      `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=media&supportsAllDrives=true`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': XLSX_MIME,
+        },
+        body: buffer,
+      },
+    );
+    if (!updateRes.ok) {
+      const errorText = await updateRes.text();
+      throw new Error(`Drive API ${updateRes.status}: ${errorText}`);
+    }
+    return existingId;
   }
 
-  const uploadUrl = initRes.headers.get('Location');
-  if (!uploadUrl) throw new Error('アップロードURLを取得できませんでした');
-
-  const uploadRes = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': XLSX_MIME, 'Content-Length': String(buffer.byteLength) },
-    body: buffer,
+  // Create new file with multipart upload
+  const boundary = 'multipart_boundary_' + Math.random().toString(36).slice(2);
+  const metadata = JSON.stringify({
+    name: sheetName,
+    mimeType: 'application/vnd.google-apps.spreadsheet',
+    parents: [folderId],
   });
+
+  const encoder = new TextEncoder();
+  const metadataPart = encoder.encode(
+    `--${boundary}\r\nContent-Type: application/json\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${XLSX_MIME}\r\n\r\n`,
+  );
+  const closingPart = encoder.encode(`\r\n--${boundary}--`);
+
+  const combined = new Uint8Array(
+    metadataPart.byteLength + buffer.byteLength + closingPart.byteLength,
+  );
+  combined.set(metadataPart, 0);
+  combined.set(new Uint8Array(buffer), metadataPart.byteLength);
+  combined.set(closingPart, metadataPart.byteLength + buffer.byteLength);
+
+  const uploadRes = await fetch(
+    `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+      },
+      body: combined,
+    },
+  );
 
   if (!uploadRes.ok) {
     const errorText = await uploadRes.text();
     throw new Error(`Drive API ${uploadRes.status}: ${errorText}`);
   }
 
-  const file = await uploadRes.json() as { id: string };
-  if (!file.id) throw new Error('Google SheetsファイルのIDを取得できませんでした');
-  return file.id;
-}
-
-export async function saveFileToDrive(
-  buffer: ArrayBuffer,
-  fileName: string,
-  mimeType: string,
-): Promise<string> {
-  const token = gapi.client.getToken()?.access_token;
-  if (!token) throw new Error('Google認証が必要です');
-
-  const folderId = await getTargetFolderId();
-
-  // Check if file already exists in the folder
-  const escapedName = fileName.replace(/'/g, "\\'");
-  const existingRes = await gapi.client.request<DriveFileList>({
-    path: 'https://www.googleapis.com/drive/v3/files',
-    params: {
-      q: `name='${escapedName}' and '${folderId}' in parents and trashed=false`,
-      fields: 'files(id,name)',
-      supportsAllDrives: 'true',
-      includeItemsFromAllDrives: 'true',
-    },
-  });
-  const existingFileId = existingRes.result.files.length > 0 ? existingRes.result.files[0].id : null;
-
-  const metadata = existingFileId
-    ? { name: fileName, mimeType }
-    : { name: fileName, mimeType, parents: [folderId] };
-
-  // Use resumable upload for reliability with large files
-  // For new files, include fields=id so the upload response returns the file ID
-  const initUrl = existingFileId
-    ? `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=resumable&supportsAllDrives=true`
-    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id';
-
-  const initRes = await fetch(initUrl, {
-    method: existingFileId ? 'PATCH' : 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json; charset=UTF-8',
-      'X-Upload-Content-Type': mimeType,
-      'X-Upload-Content-Length': String(buffer.byteLength),
-    },
-    body: JSON.stringify(metadata),
-  });
-
-  if (!initRes.ok) {
-    const errorText = await initRes.text();
-    throw new Error(`Drive API ${initRes.status}: ${errorText}`);
-  }
-
-  const uploadUrl = initRes.headers.get('Location');
-  if (!uploadUrl) throw new Error('アップロードURLを取得できませんでした');
-
-  const uploadRes = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': mimeType,
-      'Content-Length': String(buffer.byteLength),
-    },
-    body: buffer,
-  });
-
-  if (!uploadRes.ok) {
-    const errorText = await uploadRes.text();
-    throw new Error(`Drive API ${uploadRes.status}: ${errorText}`);
-  }
-
-  if (existingFileId) return existingFileId;
   const result = await uploadRes.json() as { id: string };
-  if (!result.id) throw new Error('ファイルIDを取得できませんでした');
   return result.id;
 }
 
-export async function saveInstructionsToDrive(
-  instructions: WorkInstruction[],
-): Promise<void> {
+export async function saveFileToDrive(content: string, filename: string, mimeType: string): Promise<void> {
   const token = gapi.client.getToken()?.access_token;
   if (!token) throw new Error('Google認証が必要です');
 
   const folderId = await getTargetFolderId();
-  const fileId = await findFile(folderId);
-  const content = JSON.stringify(instructions, null, 2);
+  const escapedFilename = filename.replace(/'/g, "\\'");
 
-  const metadata = fileId
-    ? { name: FILE_NAME, mimeType: 'application/json' }
-    : { name: FILE_NAME, mimeType: 'application/json', parents: [folderId] };
-
-  const boundary = 'boundary' + Date.now();
-  const encoder = new TextEncoder();
-
-  const metadataPart = encoder.encode(
-    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`
-  );
-  const fileHeader = encoder.encode(
-    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`
-  );
-  const fileContent = encoder.encode(content);
-  const closing = encoder.encode(`\r\n--${boundary}--`);
-
-  const body = new Uint8Array(metadataPart.length + fileHeader.length + fileContent.length + closing.length);
-  let offset = 0;
-  body.set(metadataPart, offset); offset += metadataPart.length;
-  body.set(fileHeader, offset); offset += fileHeader.length;
-  body.set(fileContent, offset); offset += fileContent.length;
-  body.set(closing, offset);
-
-  const url = fileId
-    ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&supportsAllDrives=true`
-    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true';
-
-  const res = await fetch(url, {
-    method: fileId ? 'PATCH' : 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': `multipart/related; boundary=${boundary}`,
+  // Check for existing file
+  const existingRes = await gapi.client.request<DriveFileList>({
+    path: 'https://www.googleapis.com/drive/v3/files',
+    params: {
+      q: `name='${escapedFilename}' and '${folderId}' in parents and trashed=false`,
+      fields: 'files(id)',
+      pageSize: '1',
+      supportsAllDrives: 'true',
+      includeItemsFromAllDrives: 'true',
     },
-    body: body.buffer,
   });
+
+  const existingId = existingRes.result.files[0]?.id;
+
+  if (existingId) {
+    const res = await fetch(
+      `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=media&supportsAllDrives=true`,
+      {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': mimeType },
+        body: content,
+      },
+    );
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`Drive API ${res.status}: ${errorText}`);
+    }
+    return;
+  }
+
+  // Create new
+  const boundary = 'boundary_' + Math.random().toString(36).slice(2);
+  const metadata = JSON.stringify({ name: filename, mimeType, parents: [folderId] });
+  const body = [
+    `--${boundary}`,
+    'Content-Type: application/json',
+    '',
+    metadata,
+    `--${boundary}`,
+    `Content-Type: ${mimeType}`,
+    '',
+    content,
+    `--${boundary}--`,
+  ].join('\r\n');
+
+  const res = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+      },
+      body,
+    },
+  );
 
   if (!res.ok) {
     const errorText = await res.text();
     throw new Error(`Drive API ${res.status}: ${errorText}`);
   }
+}
+
+export async function saveInstructionsToDrive(instructions: WorkInstruction[]): Promise<void> {
+  const content = JSON.stringify(instructions, null, 2);
+  await saveFileToDrive(content, FILE_NAME, 'application/json');
+}
+
+export async function bulkImportFromDrive(): Promise<{ imported: number; skipped: number }> {
+  const folderId = await getTargetFolderId();
+  const files = await listJsonFilesInFolder(folderId);
+  let imported = 0, skipped = 0;
+  for (const file of files) {
+    try {
+      const text = await downloadDriveFile(file.id);
+      const data = JSON.parse(text);
+      const items: WorkInstruction[] = Array.isArray(data) ? data : [data];
+      for (const item of items) {
+        if (!item.id || !item.title || !Array.isArray(item.steps)) { skipped++; continue; }
+        if (!item.status) item.status = 'completed';
+        importInstruction(item);
+        imported++;
+      }
+    } catch { skipped++; }
+  }
+  return { imported, skipped };
 }
 
 export async function loadInstructionsFromDrive(): Promise<WorkInstruction[] | null> {

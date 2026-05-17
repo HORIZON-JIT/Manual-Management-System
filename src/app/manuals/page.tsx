@@ -3,17 +3,19 @@
 import { useEffect, useMemo, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { List, LayoutGrid, Pin } from 'lucide-react';
+import { List, LayoutGrid, Pin, CloudDownload } from 'lucide-react';
 import { WorkInstruction } from '@/types/instruction';
 import { getAllInstructions } from '@/lib/storage';
 import { OFFICIAL_CATEGORIES, resolveCategory } from '@/lib/categoryRegistry';
 import CategoryChip from '@/components/CategoryChip';
+import { isGoogleConfigured, getAuthState, addAuthListener, initGoogleAuth, GoogleAuthState } from '@/lib/googleAuth';
+import { bulkImportFromDrive } from '@/lib/googleDrive';
 
 type View = 'grid' | 'list';
 
 export default function ManualsPage() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center min-h-[50vh]"><p className="text-ink-500">読み込み中…</p></div>}>
+    <Suspense fallback={<div className="flex items-center justify-center min-h-[50vh]"><p className="text-ink-500">読み込み…</p></div>}>
       <ManualsContent />
     </Suspense>
   );
@@ -26,9 +28,15 @@ function ManualsContent() {
   const [instructions, setInstructions] = useState<WorkInstruction[]>([]);
   const [activeCategory, setActiveCategory] = useState(initialCategory);
   const [view, setView] = useState<View>('grid');
+  const [auth, setAuth] = useState<GoogleAuthState>(getAuthState());
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     setInstructions(getAllInstructions().filter(i => i.status !== 'draft'));
+    if (isGoogleConfigured()) {
+      initGoogleAuth();
+      return addAuthListener(setAuth);
+    }
   }, []);
 
   const categories = ['すべて', ...OFFICIAL_CATEGORIES.map(c => c.id)];
@@ -37,6 +45,20 @@ function ManualsContent() {
     if (activeCategory === 'すべて') return instructions;
     return instructions.filter(i => resolveCategory(i.category) === activeCategory);
   }, [instructions, activeCategory]);
+
+  const handleBulkImport = async () => {
+    setImporting(true);
+    try {
+      const { imported, skipped } = await bulkImportFromDrive();
+      setInstructions(getAllInstructions().filter(i => i.status !== 'draft'));
+      alert(`${imported}件を読み込みました${skipped ? `（${skipped}件スキップ）` : ''}`);
+    } catch (err) {
+      console.error(err);
+      alert('読み込みに失敗しました。フォルダ設定とログイン状態を確認してください。');
+    } finally {
+      setImporting(false);
+    }
+  };
 
   return (
     <div>
@@ -58,12 +80,24 @@ function ManualsContent() {
               {cat}
             </button>
           ))}
+
+          {/* Drive bulk import — shown only when signed in */}
+          {isGoogleConfigured() && auth.isSignedIn && (
+            <button
+              onClick={handleBulkImport}
+              disabled={importing}
+              className="shrink-0 h-7 px-3 rounded-full text-[12px] font-semibold border border-ink-200 text-ink-600 hover:border-accent hover:text-accent-ink transition-colors flex items-center gap-1.5 disabled:opacity-50 ml-2"
+            >
+              <CloudDownload size={12} />
+              {importing ? '読み込み中…' : 'Driveから読み込み'}
+            </button>
+          )}
         </div>
 
         {/* Meta + view toggle */}
         <div className="flex items-center gap-2 text-[12px] text-ink-500">
           <span>
-            <b className="text-ink-900">{filtered.length}</b> 件 · 更新日順
+            <b className="text-ink-900">{filtered.length}</b> 件 ・ 更新日順
           </span>
           <span className="ml-auto flex items-center gap-1">
             表示
@@ -98,9 +132,15 @@ function ManualsContent() {
         {filtered.length === 0 ? (
           <div className="py-20 text-center text-[13px] text-ink-400 border border-dashed border-ink-200 rounded-xl bg-surface">
             該当する手順書がありません。
-            <Link href="/instructions/new" className="ml-1 text-accent-ink font-semibold hover:underline">
-              新規作成 →
-            </Link>
+            {isGoogleConfigured() && auth.isSignedIn ? (
+              <button onClick={handleBulkImport} disabled={importing} className="ml-1 text-accent-ink font-semibold hover:underline">
+                Driveから読み込む →
+              </button>
+            ) : (
+              <Link href="/instructions/new" className="ml-1 text-accent-ink font-semibold hover:underline">
+                新規作成 →
+              </Link>
+            )}
           </div>
         ) : view === 'grid' ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
