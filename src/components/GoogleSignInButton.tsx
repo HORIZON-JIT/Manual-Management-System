@@ -11,7 +11,11 @@ import {
   signOut,
 } from '@/lib/googleAuth';
 
-export default function GoogleSignInButton() {
+interface Props {
+  variant?: 'light' | 'dark';
+}
+
+export default function GoogleSignInButton({ variant = 'light' }: Props) {
   const [auth, setAuth] = useState<GoogleAuthState>(getAuthState());
 
   useEffect(() => {
@@ -22,9 +26,11 @@ export default function GoogleSignInButton() {
 
   if (!isGoogleConfigured()) return null;
 
+  const isDark = variant === 'dark';
+
   if (!auth.isInitialized) {
     return (
-      <div className="h-9 w-24 bg-ink-50 border border-ink-200 rounded-lg animate-pulse" />
+      <div className={`h-9 w-28 rounded-lg animate-pulse ${isDark ? 'bg-white/10' : 'bg-ink-50 border border-ink-200'}`} />
     );
   }
 
@@ -40,16 +46,20 @@ export default function GoogleSignInButton() {
             className="w-7 h-7 rounded-full ring-2 ring-accent/30 shrink-0"
           />
         ) : (
-          <div className="w-7 h-7 rounded-full bg-accent-soft flex items-center justify-center text-accent-ink text-[11px] font-bold shrink-0">
+          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${isDark ? 'bg-white/20 text-white' : 'bg-accent-soft text-accent-ink'}`}>
             {(auth.userName ?? auth.userEmail ?? '?')[0].toUpperCase()}
           </div>
         )}
-        <span className="text-[12px] text-ink-700 hidden lg:inline max-w-[120px] truncate">
+        <span className={`text-[12px] hidden lg:inline max-w-[120px] truncate ${isDark ? 'text-white/80' : 'text-ink-700'}`}>
           {auth.userName || auth.userEmail}
         </span>
         <button
           onClick={signOut}
-          className="h-9 px-3 text-[12px] text-ink-600 border border-ink-200 rounded-lg hover:border-ink-400 hover:text-ink-900 transition-colors shrink-0"
+          className={`h-9 px-3 text-[12px] rounded-lg transition-colors shrink-0 ${
+            isDark
+              ? 'border border-white/20 text-white/60 hover:border-white/40 hover:text-white'
+              : 'border border-ink-200 text-ink-600 hover:border-ink-400 hover:text-ink-900'
+          }`}
         >
           ログアウト
         </button>
@@ -60,7 +70,11 @@ export default function GoogleSignInButton() {
   return (
     <button
       onClick={signIn}
-      className="h-9 px-3 flex items-center gap-2 text-[12px] font-semibold text-ink-700 bg-surface border border-ink-200 rounded-lg hover:border-ink-400 hover:bg-ink-50 transition-colors shrink-0"
+      className={`h-9 px-3 flex items-center gap-2 text-[12px] font-semibold rounded-lg transition-colors shrink-0 ${
+        isDark
+          ? 'bg-white/10 border border-white/20 text-white hover:bg-white/20'
+          : 'bg-surface border border-ink-200 text-ink-700 hover:border-ink-400 hover:bg-ink-50'
+      }`}
     >
       <GoogleIcon />
       Googleでログイン

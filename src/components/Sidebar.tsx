@@ -4,15 +4,18 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
-  Home, Search, Pin, FileEdit, Clock, Bell,
-  AlertTriangle,
+  Home, Search, Pin, FileEdit, Clock,
+  AlertTriangle, Folder, LogOut,
 } from 'lucide-react';
 import { getAllInstructions } from '@/lib/storage';
 import { getOfficialCounts, getPendingCategories } from '@/lib/categoryRegistry';
 import GoogleSignInButton from './GoogleSignInButton';
 import DriveFolderPicker from './DriveFolderPicker';
 import { getTargetFolder, DriveFolder } from '@/lib/googleDrive';
-import { isGoogleConfigured, getAuthState } from '@/lib/googleAuth';
+import {
+  isGoogleConfigured, getAuthState, addAuthListener,
+  initGoogleAuth, signOut, GoogleAuthState,
+} from '@/lib/googleAuth';
 
 const NAV_ITEMS = [
   { href: '/',                     label: 'ホーム',       icon: Home },
@@ -29,12 +32,18 @@ export default function Sidebar() {
   const [pendingCount, setPendingCount] = useState(0);
   const [showFolderPicker, setShowFolderPicker] = useState(false);
   const [currentFolder, setCurrentFolder] = useState<DriveFolder | null>(null);
+  const [auth, setAuth] = useState<GoogleAuthState>(getAuthState());
 
   useEffect(() => {
     const items = getAllInstructions();
     setCategoryCounts(getOfficialCounts(items));
     setPendingCount(getPendingCategories(items).length);
     setCurrentFolder(getTargetFolder());
+
+    if (isGoogleConfigured()) {
+      initGoogleAuth();
+      return addAuthListener(setAuth);
+    }
   }, []);
 
   const isActive = (href: string) => {
@@ -47,7 +56,6 @@ export default function Sidebar() {
   };
 
   const handleFolderClick = () => {
-    const auth = getAuthState();
     if (isGoogleConfigured() && auth.isSignedIn) {
       setShowFolderPicker(true);
     }
@@ -109,7 +117,6 @@ export default function Sidebar() {
             </Link>
           ))}
 
-          {/* Pending categories badge */}
           {pendingCount > 0 && (
             <Link
               href="/admin/categories"
@@ -127,32 +134,49 @@ export default function Sidebar() {
           {/* Drive folder */}
           <button
             onClick={handleFolderClick}
-            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-[11px] text-white/50 hover:text-white/80 hover:bg-white/8 transition-colors duration-150 truncate"
-            title={currentFolder ? `保存先: ${currentFolder.name}` : 'Driveフォルダを指定'}
+            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-[11px] text-white/50 hover:text-white/80 hover:bg-white/8 transition-colors duration-150"
+            title={currentFolder ? `保存先: ${currentFolder.name}` : 'Driveフォルダを指定（要ログイン）'}
           >
+            <Folder size={13} className="shrink-0" />
             <span className="truncate">
-              {currentFolder ? `📁 ${currentFolder.name}` : '📁 Drive 未設定'}
+              {currentFolder ? currentFolder.name : 'Drive 未設定'}
             </span>
           </button>
 
-          {/* User row */}
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-accent text-white flex items-center justify-center font-bold text-[11px] shrink-0">
-              YT
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-[12px] font-semibold text-white">谷 友真</div>
-              <div className="text-[10px] text-white/50">情シス</div>
-            </div>
-            <button className="text-white/40 hover:text-white/80 transition-colors">
-              <Bell size={15} strokeWidth={1.8} />
-            </button>
-          </div>
-
-          {/* Google sign-in */}
-          <div className="pt-1">
-            <GoogleSignInButton />
-          </div>
+          {/* Auth section: shows user + logout when signed in, login button when not */}
+          {isGoogleConfigured() && (
+            auth.isSignedIn ? (
+              <button
+                onClick={signOut}
+                title="クリックしてログアウト"
+                className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-white/8 transition-colors duration-150 group"
+              >
+                {auth.userPhoto ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={auth.userPhoto}
+                    alt={auth.userName ?? ''}
+                    className="w-7 h-7 rounded-full ring-1 ring-white/20 shrink-0"
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-accent flex items-center justify-center text-white font-bold text-[11px] shrink-0">
+                    {(auth.userName ?? auth.userEmail ?? '?')[0].toUpperCase()}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0 text-left">
+                  <div className="text-[12px] font-semibold text-white truncate">
+                    {auth.userName ?? auth.userEmail ?? ''}
+                  </div>
+                  <div className="text-[10px] text-white/50 truncate">
+                    {auth.userName ? auth.userEmail : 'ログイン済み'}
+                  </div>
+                </div>
+                <LogOut size={13} className="text-white/30 group-hover:text-white/70 transition-colors shrink-0" />
+              </button>
+            ) : (
+              <GoogleSignInButton variant="dark" />
+            )
+          )}
         </div>
       </aside>
 

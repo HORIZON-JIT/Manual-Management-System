@@ -8,7 +8,7 @@ import HelpModal from './HelpModal';
 import DriveFolderPicker from './DriveFolderPicker';
 import GoogleSignInButton from './GoogleSignInButton';
 import { getTargetFolder, DriveFolder } from '@/lib/googleDrive';
-import { isGoogleConfigured, getAuthState } from '@/lib/googleAuth';
+import { isGoogleConfigured, getAuthState, signIn } from '@/lib/googleAuth';
 
 function useBreadcrumb(pathname: string): { label: string; href?: string }[] {
   const crumbs: { label: string; href?: string }[] = [
@@ -76,9 +76,12 @@ export default function AppHeader() {
   };
 
   const handleFolderClick = () => {
+    if (!isGoogleConfigured()) return;
     const auth = getAuthState();
-    if (isGoogleConfigured() && auth.isSignedIn) {
+    if (auth.isSignedIn) {
       setShowFolderPicker(true);
+    } else {
+      signIn();
     }
   };
 
