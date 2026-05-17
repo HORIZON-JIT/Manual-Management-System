@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { WorkInstruction } from '@/types/instruction';
@@ -8,6 +8,14 @@ import { getAllInstructions } from '@/lib/storage';
 import { search, SearchResult } from '@/lib/searchIndex';
 import { OFFICIAL_CATEGORIES, resolveCategory } from '@/lib/categoryRegistry';
 import CategoryChip from '@/components/CategoryChip';
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-[50vh]"><p className="text-ink-500">読み込み中…</p></div>}>
+      <SearchContent />
+    </Suspense>
+  );
+}
 
 function Highlight({ html }: { html: string }) {
   return (
@@ -18,7 +26,7 @@ function Highlight({ html }: { html: string }) {
   );
 }
 
-export default function SearchPage() {
+function SearchContent() {
   const params = useSearchParams();
   const q = params.get('q') ?? '';
 
@@ -45,7 +53,6 @@ export default function SearchPage() {
     });
   }, [allResults, categoryFilter, locationFilter]);
 
-  // Count by category
   const categoryCounts = useMemo(() => {
     const map = new Map<string, number>();
     for (const r of allResults) {
@@ -55,7 +62,6 @@ export default function SearchPage() {
     return map;
   }, [allResults]);
 
-  // Count by match location
   const locationCounts = useMemo(() => {
     const map = new Map<string, number>();
     for (const r of allResults) {
@@ -80,7 +86,6 @@ export default function SearchPage() {
 
   return (
     <div className="px-8 py-6 pb-10">
-      {/* Header */}
       <div className="mb-1">
         <h1 className="text-[24px] font-bold text-ink-900 tracking-tight leading-tight">
           「<span className="text-accent-ink">{q}</span>」の検索結果
@@ -94,11 +99,9 @@ export default function SearchPage() {
       </p>
 
       <div className="grid grid-cols-[200px_1fr] gap-6">
-        {/* Facet rail */}
         <aside className="space-y-4">
           <p className="text-[10px] font-bold tracking-widest uppercase text-ink-500">絞り込み</p>
 
-          {/* Category */}
           <div>
             <p className="text-[12px] font-bold text-ink-700 mb-2">カテゴリ</p>
             {OFFICIAL_CATEGORIES.map(c => {
@@ -119,7 +122,6 @@ export default function SearchPage() {
             })}
           </div>
 
-          {/* Match location */}
           <div>
             <p className="text-[12px] font-bold text-ink-700 mb-2">マッチ箇所</p>
             {([['body', '本文に含む'], ['title', 'タイトルに含む'], ['tag', 'タグに含む']] as const).map(([loc, label]) => {
@@ -145,7 +147,6 @@ export default function SearchPage() {
           </div>
         </aside>
 
-        {/* Results */}
         <div className="flex flex-col gap-3">
           {filtered.length === 0 && (
             <div className="py-12 text-center text-[13px] text-ink-400 bg-surface border border-ink-200 rounded-xl">
@@ -157,7 +158,6 @@ export default function SearchPage() {
             <ResultCard key={r.instruction.id} result={r} rank={idx} q={q} />
           ))}
 
-          {/* Create CTA */}
           <div className="mt-2 p-5 bg-surface border border-dashed border-ink-300 rounded-xl text-[13px] text-ink-600 text-center">
             この検索キーワードで関連する手順書がないですか？{' '}
             <Link

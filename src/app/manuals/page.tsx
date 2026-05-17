@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { List, LayoutGrid, Pin } from 'lucide-react';
@@ -12,6 +12,14 @@ import CategoryChip from '@/components/CategoryChip';
 type View = 'grid' | 'list';
 
 export default function ManualsPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-[50vh]"><p className="text-ink-500">読み込み中…</p></div>}>
+      <ManualsContent />
+    </Suspense>
+  );
+}
+
+function ManualsContent() {
   const params = useSearchParams();
   const initialCategory = params.get('category') ?? 'すべて';
 
