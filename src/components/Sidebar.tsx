@@ -56,7 +56,11 @@ export default function Sidebar() {
   };
 
   const handleFolderClick = () => {
-    if (isGoogleConfigured() && auth.isSignedIn) {
+    if (!isGoogleConfigured()) {
+      alert('Google Drive連携を使用するには、管理者がGoogleクライアントIDを設定する必要があります。\n\nGitHubリポジトリのSettings → Secrets and variables → Actions → Variables に\nNEXT_PUBLIC_GOOGLE_CLIENT_ID を追加してください。');
+      return;
+    }
+    if (auth.isSignedIn) {
       setShowFolderPicker(true);
     }
   };
