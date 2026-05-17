@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { ChevronRight, Folder, HardDrive, FolderPlus, X } from 'lucide-react';
 import {
   DriveFolder,
   DriveLocation,
@@ -19,7 +20,7 @@ interface DriveFolderPickerProps {
 }
 
 interface BreadcrumbItem {
-  id: string | undefined; // undefined = root
+  id: string | undefined;
   name: string;
 }
 
@@ -36,9 +37,7 @@ export default function DriveFolderPicker({ open, onClose, onSelect }: DriveFold
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([{ id: undefined, name: 'マイドライブ' }]);
   const [creating, setCreating] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
-  // Track if we're browsing inside a shared drive (for driveId param)
   const [currentDriveId, setCurrentDriveId] = useState<string | undefined>(undefined);
-  // Track if we're at the shared drives list level (not yet inside one)
   const [isSharedDrivesList, setIsSharedDrivesList] = useState(false);
   const currentParentId = breadcrumbs[breadcrumbs.length - 1].id;
 
@@ -85,15 +84,8 @@ export default function DriveFolderPicker({ open, onClose, onSelect }: DriveFold
     setLocation(loc);
     setCurrentDriveId(undefined);
     setIsSharedDrivesList(false);
-    const rootName = LOCATION_LABELS[loc];
-    setBreadcrumbs([{ id: undefined, name: rootName }]);
-
-    if (loc === 'my-drive') {
-      // Will be loaded by effect
-    } else if (loc === 'shared-drives') {
-      setIsSharedDrivesList(true);
-    }
-    // shared-with-me also loaded by effect
+    setBreadcrumbs([{ id: undefined, name: LOCATION_LABELS[loc] }]);
+    if (loc === 'shared-drives') setIsSharedDrivesList(true);
   }, []);
 
   useEffect(() => {
@@ -105,22 +97,16 @@ export default function DriveFolderPicker({ open, onClose, onSelect }: DriveFold
     loadFolderList(undefined);
   }, [open, loadFolderList]);
 
-  // Load folders when location changes
   useEffect(() => {
     if (!open) return;
-    if (location === 'my-drive') {
-      loadFolderList(undefined);
-    } else if (location === 'shared-drives') {
-      loadSharedDrives();
-    } else if (location === 'shared-with-me') {
-      loadSharedWithMe();
-    }
+    if (location === 'my-drive') loadFolderList(undefined);
+    else if (location === 'shared-drives') loadSharedDrives();
+    else if (location === 'shared-with-me') loadSharedWithMe();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location]);
 
   const navigateInto = (folder: DriveFolder) => {
     if (isSharedDrivesList) {
-      // Entering a shared drive - set driveId and browse its root
       setIsSharedDrivesList(false);
       setCurrentDriveId(folder.id);
       setBreadcrumbs([
@@ -130,18 +116,15 @@ export default function DriveFolderPicker({ open, onClose, onSelect }: DriveFold
       loadFolderList(folder.id, folder.id);
       return;
     }
-
-    setBreadcrumbs((prev) => [...prev, { id: folder.id, name: folder.name }]);
+    setBreadcrumbs(prev => [...prev, { id: folder.id, name: folder.name }]);
     loadFolderList(folder.id, currentDriveId);
   };
 
   const navigateTo = (index: number) => {
-    const newBreadcrumbs = breadcrumbs.slice(0, index + 1);
-    setBreadcrumbs(newBreadcrumbs);
-    const targetId = newBreadcrumbs[newBreadcrumbs.length - 1].id;
-
+    const next = breadcrumbs.slice(0, index + 1);
+    setBreadcrumbs(next);
+    const targetId = next[next.length - 1].id;
     if (location === 'shared-drives' && index === 0) {
-      // Back to shared drives list
       setIsSharedDrivesList(true);
       setCurrentDriveId(undefined);
       loadSharedDrives();
@@ -155,7 +138,6 @@ export default function DriveFolderPicker({ open, onClose, onSelect }: DriveFold
   const handleSelectCurrent = () => {
     const current = breadcrumbs[breadcrumbs.length - 1];
     if (!current.id) {
-      // Root selected - clear custom folder
       setTargetFolder(null);
       onSelect(null);
     } else {
@@ -172,15 +154,9 @@ export default function DriveFolderPicker({ open, onClose, onSelect }: DriveFold
     try {
       const created = await createNewFolder(newFolderName.trim(), currentParentId);
       setNewFolderName('');
-      // Refresh folder list
-      if (isSharedDrivesList) {
-        await loadSharedDrives();
-      } else if (location === 'shared-with-me' && !currentParentId) {
-        await loadSharedWithMe();
-      } else {
-        await loadFolderList(currentParentId, currentDriveId);
-      }
-      // Navigate into new folder
+      if (isSharedDrivesList) await loadSharedDrives();
+      else if (location === 'shared-with-me' && !currentParentId) await loadSharedWithMe();
+      else await loadFolderList(currentParentId, currentDriveId);
       navigateInto(created);
     } catch (err) {
       console.error('Failed to create folder:', err);
@@ -200,29 +176,39 @@ export default function DriveFolderPicker({ open, onClose, onSelect }: DriveFold
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-2 sm:p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(11,27,43,0.55)', backdropFilter: 'blur(2px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-surface border border-ink-200 rounded-[14px] w-full max-w-lg max-h-[85vh] flex flex-col" style={{ boxShadow: 'var(--shadow-modal)' }}>
         {/* Header */}
-        <div className="px-4 py-3 border-b border-gray-200">
-          <h3 className="text-lg font-bold text-gray-800">保存先フォルダを選択</h3>
-          {currentTarget && (
-            <p className="text-xs text-gray-500 mt-1">
-              現在の保存先: <span className="font-medium text-yellow-700">{currentTarget.name}</span>
-            </p>
-          )}
+        <div className="flex items-start justify-between px-[22px] py-4 border-b border-ink-100 shrink-0">
+          <div>
+            <h2 className="font-bold text-[16px] text-ink-900">保存先フォルダを選択</h2>
+            {currentTarget && (
+              <p className="text-[12px] text-ink-500 mt-0.5">
+                現在の保存先: <span className="font-semibold text-accent-ink">{currentTarget.name}</span>
+              </p>
+            )}
+          </div>
+          <button onClick={onClose} className="ml-4 text-ink-400 hover:text-ink-700 transition-colors mt-0.5">
+            <X size={18} />
+          </button>
         </div>
 
         {/* Location tabs */}
-        <div className="px-2 sm:px-4 py-2 border-b border-gray-200 flex gap-1">
-          {(['my-drive', 'shared-drives', 'shared-with-me'] as DriveLocation[]).map((loc) => (
+        <div className="px-[22px] py-2 border-b border-ink-100 flex gap-1 shrink-0">
+          {(['my-drive', 'shared-drives', 'shared-with-me'] as DriveLocation[]).map(loc => (
             <button
               key={loc}
               onClick={() => switchLocation(loc)}
-              className={`px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium transition ${
+              className={[
+                'px-3 py-1 rounded-full text-[12px] font-semibold transition-colors',
                 location === loc
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
-              }`}
+                  ? 'bg-accent-soft text-accent-ink'
+                  : 'text-ink-500 hover:bg-ink-50 hover:text-ink-700',
+              ].join(' ')}
             >
               {LOCATION_LABELS[loc]}
             </button>
@@ -230,17 +216,15 @@ export default function DriveFolderPicker({ open, onClose, onSelect }: DriveFold
         </div>
 
         {/* Breadcrumbs */}
-        <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-1 text-sm overflow-x-auto">
+        <div className="px-[22px] py-2 border-b border-ink-100 flex items-center gap-1 text-[12px] overflow-x-auto shrink-0">
           {breadcrumbs.map((crumb, i) => (
             <span key={i} className="flex items-center gap-1 shrink-0">
-              {i > 0 && <span className="text-gray-400">/</span>}
+              {i > 0 && <ChevronRight size={11} className="text-ink-300" />}
               <button
                 onClick={() => navigateTo(i)}
-                className={`hover:text-blue-600 ${
-                  i === breadcrumbs.length - 1
-                    ? 'font-medium text-gray-800'
-                    : 'text-gray-500 hover:underline'
-                }`}
+                className={i === breadcrumbs.length - 1
+                  ? 'font-semibold text-ink-900'
+                  : 'text-ink-500 hover:text-ink-700 hover:underline'}
               >
                 {crumb.name}
               </button>
@@ -251,25 +235,26 @@ export default function DriveFolderPicker({ open, onClose, onSelect }: DriveFold
         {/* Folder list */}
         <div className="flex-1 overflow-y-auto p-2 min-h-[200px]">
           {loading ? (
-            <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
-              読み込み中...
+            <div className="flex items-center justify-center h-32 text-[13px] text-ink-400">
+              読み込み…
             </div>
           ) : folders.length === 0 ? (
-            <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
+            <div className="flex items-center justify-center h-32 text-[13px] text-ink-400">
               {isSharedDrivesList ? '共有ドライブがありません' : 'フォルダがありません'}
             </div>
           ) : (
-            <ul className="space-y-1">
-              {folders.map((folder) => (
+            <ul className="space-y-0.5">
+              {folders.map(folder => (
                 <li key={folder.id}>
                   <button
                     onClick={() => navigateInto(folder)}
-                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2 text-sm transition"
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-ink-50 flex items-center gap-2.5 text-[13px] transition-colors"
                   >
-                    <span className="text-yellow-500 text-lg">
-                      {isSharedDrivesList ? '🖥️' : '📁'}
-                    </span>
-                    <span className="text-gray-700 truncate">{folder.name}</span>
+                    {isSharedDrivesList
+                      ? <HardDrive size={15} className="text-accent shrink-0" />
+                      : <Folder size={15} className="text-ink-400 shrink-0" />
+                    }
+                    <span className="text-ink-700 truncate">{folder.name}</span>
                   </button>
                 </li>
               ))}
@@ -277,48 +262,49 @@ export default function DriveFolderPicker({ open, onClose, onSelect }: DriveFold
           )}
         </div>
 
-        {/* New folder - hide when at shared drives list level */}
+        {/* New folder */}
         {!isSharedDrivesList && (
-          <div className="px-4 py-2 border-t border-gray-100">
+          <div className="px-[22px] py-2 border-t border-ink-100 shrink-0">
             <div className="flex items-center gap-2">
+              <FolderPlus size={14} className="text-ink-400 shrink-0" />
               <input
                 type="text"
                 value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
-                placeholder="新しいフォルダ名..."
-                className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                onChange={e => setNewFolderName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleCreateFolder()}
+                placeholder="新しいフォルダ名…"
+                className="flex-1 border border-ink-200 rounded-lg px-2.5 py-1.5 text-[13px] text-ink-700 placeholder:text-ink-400 focus:outline-none focus:border-accent bg-surface"
               />
               <button
                 onClick={handleCreateFolder}
                 disabled={creating || !newFolderName.trim()}
-                className="px-3 py-1 bg-blue-500 text-white rounded text-sm font-medium hover:bg-blue-600 transition disabled:opacity-50"
+                className="px-3 py-1.5 bg-accent text-white rounded-lg text-[12px] font-semibold hover:bg-accent-ink transition-colors disabled:opacity-40"
               >
-                {creating ? '作成中...' : '作成'}
+                {creating ? '作成中…' : '作成'}
               </button>
             </div>
           </div>
         )}
 
         {/* Actions */}
-        <div className="px-3 sm:px-4 py-3 border-t border-gray-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+        <div className="px-[22px] py-3.5 border-t border-ink-100 flex items-center justify-between gap-2 shrink-0">
           <button
             onClick={handleReset}
-            className="text-xs sm:text-sm text-gray-500 hover:text-gray-700 underline"
+            className="text-[12px] text-ink-400 hover:text-ink-700 underline transition-colors"
           >
             デフォルトに戻す
           </button>
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
-              className="px-3 sm:px-4 py-2 text-xs sm:text-sm text-gray-600 hover:text-gray-800 transition"
+              className="h-9 px-4 text-[13px] text-ink-600 hover:text-ink-900 transition-colors"
             >
               キャンセル
             </button>
             <button
               onClick={handleSelectCurrent}
               disabled={isSharedDrivesList}
-              className="px-3 sm:px-4 py-2 bg-yellow-500 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-yellow-600 transition disabled:opacity-50"
+              className="h-9 px-4 bg-accent text-white rounded-lg text-[13px] font-semibold hover:bg-accent-ink transition-colors disabled:opacity-40"
             >
               このフォルダを選択
             </button>
