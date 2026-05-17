@@ -8,29 +8,22 @@ import {
   listFolders,
   listSharedDrives,
   listSharedWithMeFolders,
-  createNewFolder,
-  getTargetFolder,
   setTargetFolder,
+  createNewFolder,
 } from '@/lib/googleDrive';
-
-interface DriveFolderPickerProps {
-  open: boolean;
-  onClose: () => void;
-  onSelect: (folder: DriveFolder | null) => void;
-}
 
 interface BreadcrumbItem {
   id: string | undefined;
   name: string;
 }
 
-const LOCATION_LABELS: Record<DriveLocation, string> = {
-  'my-drive': 'マイドライブ',
-  'shared-drives': '共有ドライブ',
-  'shared-with-me': '共有アイテム',
-};
+interface Props {
+  open: boolean;
+  onClose: () => void;
+  onSelect: (folder: DriveFolder | null) => void;
+}
 
-export default function DriveFolderPicker({ open, onClose, onSelect }: DriveFolderPickerProps) {
+export default function DriveFolderPicker({ open, onClose, onSelect }: Props) {
   const [folders, setFolders] = useState<DriveFolder[]>([]);
   const [loading, setLoading] = useState(false);
   const [location, setLocation] = useState<DriveLocation>('my-drive');
@@ -39,100 +32,61 @@ export default function DriveFolderPicker({ open, onClose, onSelect }: DriveFold
   const [newFolderName, setNewFolderName] = useState('');
   const [currentDriveId, setCurrentDriveId] = useState<string | undefined>(undefined);
   const [isSharedDrivesList, setIsSharedDrivesList] = useState(false);
+
   const currentParentId = breadcrumbs[breadcrumbs.length - 1].id;
 
-  const loadFolderList = useCallback(async (parentId?: string, driveId?: string) => {
+  const loadFolderList = useCallback(async (parentId?: string, opts?: { driveId?: string; sharedDrivesList?: boolean }) => {
     setLoading(true);
     try {
-      const result = await listFolders(parentId, driveId ? { driveId } : undefined);
-      setFolders(result);
-    } catch (err) {
-      console.error('Failed to list folders:', err);
+      if (opts?.sharedDrivesList) {
+        const result = await listSharedDrives();
+        setFolders(result);
+        setIsSharedDrivesList(true);
+      } else if (location === 'shared-with-me' && !parentId) {
+        const result = await listSharedWithMeFolders();
+        setFolders(result);
+        setIsSharedDrivesList(false);
+      } else {
+        const result = await listFolders(parentId, { driveId: opts?.driveId ?? currentDriveId });
+        setFolders(result);
+        setIsSharedDrivesList(false);
+      }
+    } catch (e) {
+      console.error(e);
       setFolders([]);
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  const loadSharedDrives = useCallback(async () => {
-    setLoading(true);
-    try {
-      const result = await listSharedDrives();
-      setFolders(result);
-    } catch (err) {
-      console.error('Failed to list shared drives:', err);
-      setFolders([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const loadSharedWithMe = useCallback(async () => {
-    setLoading(true);
-    try {
-      const result = await listSharedWithMeFolders();
-      setFolders(result);
-    } catch (err) {
-      console.error('Failed to list shared folders:', err);
-      setFolders([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const switchLocation = useCallback((loc: DriveLocation) => {
-    setLocation(loc);
-    setCurrentDriveId(undefined);
-    setIsSharedDrivesList(false);
-    setBreadcrumbs([{ id: undefined, name: LOCATION_LABELS[loc] }]);
-    if (loc === 'shared-drives') setIsSharedDrivesList(true);
-  }, []);
+  }, [location, currentDriveId]);
 
   useEffect(() => {
     if (!open) return;
-    setLocation('my-drive');
+    setBreadcrumbs([{ id: undefined, name: location === 'my-drive' ? 'マイドライブ' : location === 'shared-drives' ? '共有ドライブ' : '共有アイテム' }]);
     setCurrentDriveId(undefined);
     setIsSharedDrivesList(false);
-    setBreadcrumbs([{ id: undefined, name: 'マイドライブ' }]);
-    loadFolderList(undefined);
-  }, [open, loadFolderList]);
+    if (location === 'shared-drives') {
+      loadFolderList(undefined, { sharedDrivesList: true });
+    } else {
+      loadFolderList(undefined);
+    }
+  }, [open, location]);
 
-  useEffect(() => {
-    if (!open) return;
-    if (location === 'my-drive') loadFolderList(undefined);
-    else if (location === 'shared-drives') loadSharedDrives();
-    else if (location === 'shared-with-me') loadSharedWithMe();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location]);
-
-  const navigateInto = (folder: DriveFolder) => {
+  const handleFolderClick = (folder: DriveFolder) => {
     if (isSharedDrivesList) {
-      setIsSharedDrivesList(false);
       setCurrentDriveId(folder.id);
-      setBreadcrumbs([
-        { id: undefined, name: LOCATION_LABELS['shared-drives'] },
-        { id: folder.id, name: folder.name },
-      ]);
-      loadFolderList(folder.id, folder.id);
-      return;
+      setBreadcrumbs(prev => [...prev, { id: folder.id, name: folder.name }]);
+      loadFolderList(folder.id, { driveId: folder.id });
+    } else {
+      setBreadcrumbs(prev => [...prev, { id: folder.id, name: folder.name }]);
+      loadFolderList(folder.id);
     }
-    setBreadcrumbs(prev => [...prev, { id: folder.id, name: folder.name }]);
-    loadFolderList(folder.id, currentDriveId);
   };
 
-  const navigateTo = (index: number) => {
-    const next = breadcrumbs.slice(0, index + 1);
-    setBreadcrumbs(next);
-    const targetId = next[next.length - 1].id;
-    if (location === 'shared-drives' && index === 0) {
-      setIsSharedDrivesList(true);
-      setCurrentDriveId(undefined);
-      loadSharedDrives();
-    } else if (location === 'shared-with-me' && index === 0) {
-      loadSharedWithMe();
-    } else {
-      loadFolderList(targetId, currentDriveId);
-    }
+  const handleBreadcrumbClick = (index: number) => {
+    const newCrumbs = breadcrumbs.slice(0, index + 1);
+    setBreadcrumbs(newCrumbs);
+    const target = newCrumbs[newCrumbs.length - 1];
+    loadFolderList(target.id);
   };
 
   const handleSelectCurrent = () => {
@@ -141,7 +95,7 @@ export default function DriveFolderPicker({ open, onClose, onSelect }: DriveFold
       setTargetFolder(null);
       onSelect(null);
     } else {
-      const folder: DriveFolder = { id: current.id, name: current.name };
+      const folder: DriveFolder = { id: current.id, name: current.name, driveId: currentDriveId };
       setTargetFolder(folder);
       onSelect(folder);
     }
@@ -154,12 +108,13 @@ export default function DriveFolderPicker({ open, onClose, onSelect }: DriveFold
     try {
       const created = await createNewFolder(newFolderName.trim(), currentParentId);
       setNewFolderName('');
-      if (isSharedDrivesList) await loadSharedDrives();
-      else if (location === 'shared-with-me' && !currentParentId) await loadSharedWithMe();
-      else await loadFolderList(currentParentId, currentDriveId);
-      navigateInto(created);
-    } catch (err) {
-      console.error('Failed to create folder:', err);
+      loadFolderList(currentParentId);
+      const folder: DriveFolder = { id: created.id, name: created.name, driveId: currentDriveId };
+      setTargetFolder(folder);
+      onSelect(folder);
+      onClose();
+    } catch (e) {
+      console.error(e);
     } finally {
       setCreating(false);
     }
@@ -171,144 +126,110 @@ export default function DriveFolderPicker({ open, onClose, onSelect }: DriveFold
     onClose();
   };
 
-  const currentTarget = getTargetFolder();
-
   if (!open) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(11,27,43,0.55)', backdropFilter: 'blur(2px)' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(11,27,43,0.55)', backdropFilter: 'blur(2px)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-surface border border-ink-200 rounded-[14px] w-full max-w-lg max-h-[85vh] flex flex-col" style={{ boxShadow: 'var(--shadow-modal)' }}>
+      <div className="bg-surface rounded-2xl shadow-2xl w-[480px] max-h-[80vh] flex flex-col overflow-hidden border border-ink-200">
         {/* Header */}
-        <div className="flex items-start justify-between px-[22px] py-4 border-b border-ink-100 shrink-0">
-          <div>
-            <h2 className="font-bold text-[16px] text-ink-900">保存先フォルダを選択</h2>
-            {currentTarget && (
-              <p className="text-[12px] text-ink-500 mt-0.5">
-                現在の保存先: <span className="font-semibold text-accent-ink">{currentTarget.name}</span>
-              </p>
-            )}
-          </div>
-          <button onClick={onClose} className="ml-4 text-ink-400 hover:text-ink-700 transition-colors mt-0.5">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100">
+          <h2 className="font-bold text-[15px] text-ink-900">Driveフォルダを選択</h2>
+          <button onClick={onClose} className="text-ink-400 hover:text-ink-700 transition-colors">
             <X size={18} />
           </button>
         </div>
 
         {/* Location tabs */}
-        <div className="px-[22px] py-2 border-b border-ink-100 flex gap-1 shrink-0">
+        <div className="flex gap-1 px-5 pt-3 pb-2 border-b border-ink-100">
           {(['my-drive', 'shared-drives', 'shared-with-me'] as DriveLocation[]).map(loc => (
             <button
               key={loc}
-              onClick={() => switchLocation(loc)}
+              onClick={() => setLocation(loc)}
               className={[
-                'px-3 py-1 rounded-full text-[12px] font-semibold transition-colors',
-                location === loc
-                  ? 'bg-accent-soft text-accent-ink'
-                  : 'text-ink-500 hover:bg-ink-50 hover:text-ink-700',
+                'px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors',
+                location === loc ? 'bg-accent-soft text-accent-ink' : 'text-ink-500 hover:bg-ink-50',
               ].join(' ')}
             >
-              {LOCATION_LABELS[loc]}
+              {loc === 'my-drive' ? 'マイドライブ' : loc === 'shared-drives' ? '共有ドライブ' : '共有アイテム'}
             </button>
           ))}
         </div>
 
-        {/* Breadcrumbs */}
-        <div className="px-[22px] py-2 border-b border-ink-100 flex items-center gap-1 text-[12px] overflow-x-auto shrink-0">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-1 px-5 py-2 text-[12px] text-ink-500 overflow-x-auto no-scrollbar">
           {breadcrumbs.map((crumb, i) => (
             <span key={i} className="flex items-center gap-1 shrink-0">
               {i > 0 && <ChevronRight size={11} className="text-ink-300" />}
               <button
-                onClick={() => navigateTo(i)}
-                className={i === breadcrumbs.length - 1
-                  ? 'font-semibold text-ink-900'
-                  : 'text-ink-500 hover:text-ink-700 hover:underline'}
+                onClick={() => handleBreadcrumbClick(i)}
+                className={i === breadcrumbs.length - 1 ? 'font-semibold text-ink-900' : 'hover:text-ink-700 transition-colors'}
               >
-                {crumb.name}
+                {i === 0 ? <HardDrive size={13} className="inline" /> : crumb.name}
               </button>
             </span>
           ))}
         </div>
 
         {/* Folder list */}
-        <div className="flex-1 overflow-y-auto p-2 min-h-[200px]">
+        <div className="flex-1 overflow-y-auto px-3 py-1">
           {loading ? (
-            <div className="flex items-center justify-center h-32 text-[13px] text-ink-400">
-              読み込み…
-            </div>
+            <div className="py-8 text-center text-[13px] text-ink-400">読み込み中…</div>
           ) : folders.length === 0 ? (
-            <div className="flex items-center justify-center h-32 text-[13px] text-ink-400">
-              {isSharedDrivesList ? '共有ドライブがありません' : 'フォルダがありません'}
-            </div>
+            <div className="py-8 text-center text-[13px] text-ink-400">フォルダがありません</div>
           ) : (
-            <ul className="space-y-0.5">
-              {folders.map(folder => (
-                <li key={folder.id}>
-                  <button
-                    onClick={() => navigateInto(folder)}
-                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-ink-50 flex items-center gap-2.5 text-[13px] transition-colors"
-                  >
-                    {isSharedDrivesList
-                      ? <HardDrive size={15} className="text-accent shrink-0" />
-                      : <Folder size={15} className="text-ink-400 shrink-0" />
-                    }
-                    <span className="text-ink-700 truncate">{folder.name}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            folders.map(folder => (
+              <button
+                key={folder.id}
+                onClick={() => handleFolderClick(folder)}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-ink-50 transition-colors text-left"
+              >
+                <Folder size={16} className="text-ink-400 shrink-0" />
+                <span className="text-[13px] text-ink-800 truncate">{folder.name}</span>
+                <ChevronRight size={13} className="text-ink-300 ml-auto shrink-0" />
+              </button>
+            ))
           )}
         </div>
 
-        {/* New folder */}
-        {!isSharedDrivesList && (
-          <div className="px-[22px] py-2 border-t border-ink-100 shrink-0">
-            <div className="flex items-center gap-2">
-              <FolderPlus size={14} className="text-ink-400 shrink-0" />
-              <input
-                type="text"
-                value={newFolderName}
-                onChange={e => setNewFolderName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleCreateFolder()}
-                placeholder="新しいフォルダ名…"
-                className="flex-1 border border-ink-200 rounded-lg px-2.5 py-1.5 text-[13px] text-ink-700 placeholder:text-ink-400 focus:outline-none focus:border-accent bg-surface"
-              />
-              <button
-                onClick={handleCreateFolder}
-                disabled={creating || !newFolderName.trim()}
-                className="px-3 py-1.5 bg-accent text-white rounded-lg text-[12px] font-semibold hover:bg-accent-ink transition-colors disabled:opacity-40"
-              >
-                {creating ? '作成中…' : '作成'}
-              </button>
-            </div>
+        {/* New folder input */}
+        <div className="px-5 py-3 border-t border-ink-100">
+          <div className="flex gap-2">
+            <input
+              value={newFolderName}
+              onChange={e => setNewFolderName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleCreateFolder()}
+              placeholder="新しいフォルダ名"
+              className="flex-1 h-8 px-3 text-[12px] border border-ink-200 rounded-lg bg-ink-50 focus:outline-none focus:border-accent"
+            />
+            <button
+              onClick={handleCreateFolder}
+              disabled={creating || !newFolderName.trim()}
+              className="h-8 px-3 text-[12px] bg-ink-100 hover:bg-ink-200 rounded-lg text-ink-700 font-medium transition-colors disabled:opacity-40 flex items-center gap-1"
+            >
+              <FolderPlus size={13} />
+              {creating ? '作成中…' : '作成'}
+            </button>
           </div>
-        )}
+        </div>
 
         {/* Actions */}
-        <div className="px-[22px] py-3.5 border-t border-ink-100 flex items-center justify-between gap-2 shrink-0">
+        <div className="flex gap-2 px-5 py-3 border-t border-ink-100">
           <button
             onClick={handleReset}
-            className="text-[12px] text-ink-400 hover:text-ink-700 underline transition-colors"
+            className="text-[12px] text-ink-500 hover:text-ink-700 transition-colors"
           >
-            デフォルトに戻す
+            リセット
           </button>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onClose}
-              className="h-9 px-4 text-[13px] text-ink-600 hover:text-ink-900 transition-colors"
-            >
-              キャンセル
-            </button>
-            <button
-              onClick={handleSelectCurrent}
-              disabled={isSharedDrivesList}
-              className="h-9 px-4 bg-accent text-white rounded-lg text-[13px] font-semibold hover:bg-accent-ink transition-colors disabled:opacity-40"
-            >
-              このフォルダを選択
-            </button>
-          </div>
+          <button
+            onClick={handleSelectCurrent}
+            disabled={!currentParentId}
+            className="ml-auto h-8 px-4 bg-accent hover:bg-accent-ink text-white text-[13px] font-semibold rounded-lg transition-colors disabled:opacity-40"
+          >
+            このフォルダを選択
+          </button>
         </div>
       </div>
     </div>
