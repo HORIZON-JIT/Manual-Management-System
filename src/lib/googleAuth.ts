@@ -1,4 +1,4 @@
-const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '158402335540-hk7sn0l40k0hquhcfvm27ceroj2ubpl7.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/script.projects';
 
 const STORAGE_TOKEN_KEY = 'google_auth_token';
