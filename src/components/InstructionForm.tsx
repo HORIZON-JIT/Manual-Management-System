@@ -4,6 +4,7 @@ import { useState, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
 import { WorkInstruction, Step, Condition, ConditionGroup, DEFAULT_CATEGORIES, UpdateHistoryEntry, InstructionSnapshot, InstructionStatus } from '@/types/instruction';
+import { OFFICIAL_CATEGORIES, resolveCategory } from '@/lib/categoryRegistry';
 import { saveInstruction } from '@/lib/storage';
 import { buildExcelBuffer, ExcelNavMode } from '@/lib/exportSpreadsheet';
 import { uploadAsGoogleSheet } from '@/lib/googleDrive';
@@ -362,87 +363,79 @@ export default function InstructionForm({ initialData }: InstructionFormProps) {
   return (
     <>
     <form className="max-w-3xl mx-auto px-4 py-6 space-y-6" onSubmit={(e) => e.preventDefault()}>
-      <h1 className="text-2xl font-bold text-gray-800">
+      <h1 className="text-[24px] font-bold font-display text-ink-900 tracking-tight">
         {isEdit ? '手順書を編集' : '新規手順書作成'}
       </h1>
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 space-y-4">
+      <div className="bg-surface rounded-xl border border-ink-200 p-5 space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            タイトル <span className="text-red-500">*</span>
+          <label className="block text-[13px] font-semibold text-ink-700 mb-1">
+            タイトル <span className="text-warn">*</span>
           </label>
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+            className="w-full border border-ink-200 rounded-lg px-3 py-2 text-[14px] text-ink-900 focus:ring-2 focus:ring-accent focus:border-accent outline-none bg-surface"
             placeholder="例: 出荷伝票の作成手順"
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            カテゴリ <span className="text-red-500">*</span>
+          <label className="block text-[13px] font-semibold text-ink-700 mb-1">
+            カテゴリ <span className="text-warn">*</span>
           </label>
-          {showCustomCategory ? (
-            <div className="flex gap-2">
+          {/* Category combobox — official list + free input */}
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <select
+                value={showCustomCategory ? '__custom' : category}
+                onChange={(e) => {
+                  if (e.target.value === '__custom') {
+                    setShowCustomCategory(true);
+                    setCategory(customCategory || '');
+                  } else {
+                    setShowCustomCategory(false);
+                    setCustomCategory('');
+                    setCategory(e.target.value);
+                  }
+                }}
+                className="w-full border border-ink-200 rounded-lg px-3 py-2 text-[14px] text-ink-800 bg-surface focus:ring-2 focus:ring-accent focus:border-accent outline-none"
+              >
+                {OFFICIAL_CATEGORIES.map(c => (
+                  <option key={c.id} value={c.id}>{c.label}</option>
+                ))}
+                <option value="__custom">その他（自由入力）</option>
+              </select>
+            </div>
+            {showCustomCategory && (
               <input
                 type="text"
                 value={customCategory}
-                onChange={(e) => {
-                  setCustomCategory(e.target.value);
-                  setCategory(e.target.value);
-                }}
-                className="flex-1 border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                onChange={(e) => { setCustomCategory(e.target.value); setCategory(e.target.value); }}
+                className="flex-1 border border-pending-border rounded-lg px-3 py-2 text-[14px] bg-pending-bg focus:ring-2 focus:ring-accent outline-none"
                 placeholder="カテゴリ名を入力"
                 autoFocus
               />
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCustomCategory(false);
-                  setCustomCategory('');
-                  setCategory(DEFAULT_CATEGORIES[0]);
-                }}
-                className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-300 rounded transition"
-              >
-                戻す
-              </button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="flex-1 border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-              >
-                {DEFAULT_CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => setShowCustomCategory(true)}
-                className="px-3 py-2 text-sm text-blue-600 hover:text-blue-800 border border-blue-300 hover:border-blue-400 rounded transition whitespace-nowrap"
-              >
-                + 新規
-              </button>
-            </div>
+            )}
+          </div>
+          {showCustomCategory && customCategory && !resolveCategory(customCategory) && (
+            <p className="text-[12px] text-pending-text mt-1 flex items-center gap-1">
+              ⚠ 未承認カテゴリとして保存されます。管理者が後から公式化できます。
+            </p>
           )}
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            {isEdit ? '更新者名' : '作成者名'} <span className="text-red-500">*</span>
+          <label className="block text-[13px] font-semibold text-ink-700 mb-1">
+            {isEdit ? '更新者名' : '作成者名'} <span className="text-warn">*</span>
           </label>
           <input
             type="text"
             value={authorName}
             onChange={(e) => setAuthorName(e.target.value)}
-            className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+            className="w-full border border-ink-200 rounded-lg px-3 py-2 text-[14px] text-ink-900 focus:ring-2 focus:ring-accent focus:border-accent outline-none bg-surface"
             placeholder={isEdit ? '更新者の名前を入力' : '作成者の名前を入力'}
           />
         </div>
@@ -481,28 +474,28 @@ export default function InstructionForm({ initialData }: InstructionFormProps) {
         )}
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">概要</label>
+          <label className="block text-[13px] font-semibold text-ink-700 mb-1">概要</label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
-            className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y"
+            className="w-full border border-ink-200 rounded-lg px-3 py-2 text-[14px] text-ink-900 focus:ring-2 focus:ring-accent focus:border-accent outline-none resize-y bg-surface"
             placeholder="この手順書の概要を記入してください"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            関連キーワード <span className="text-gray-400 font-normal">(任意)</span>
+          <label className="block text-[13px] font-semibold text-ink-700 mb-1">
+            関連キーワード <span className="text-ink-400 font-normal">(任意)</span>
           </label>
           <input
             type="text"
             value={keywordsText}
             onChange={(e) => setKeywordsText(e.target.value)}
-            className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+            className="w-full border border-ink-200 rounded-lg px-3 py-2 text-[14px] text-ink-900 focus:ring-2 focus:ring-accent focus:border-accent outline-none bg-surface"
             placeholder="例: 出荷, 伝票, 梱包（カンマ区切りで入力）"
           />
-          <p className="mt-1 text-xs text-gray-400">資料検索時にヒットさせるためのキーワードを入力してください</p>
+          <p className="mt-1 text-[12px] text-ink-400">資料検索時にヒットさせるためのキーワードを入力してください</p>
         </div>
       </div>
 
@@ -681,7 +674,7 @@ export default function InstructionForm({ initialData }: InstructionFormProps) {
             type="button"
             onClick={() => handleDraftSave(true)}
             disabled={saving}
-            className="flex-1 py-3.5 bg-white border-2 border-slate-300 text-slate-600 rounded-xl font-bold text-base hover:bg-slate-50 transition disabled:opacity-50"
+            className="flex-1 py-3.5 bg-surface border-2 border-ink-200 text-ink-600 rounded-xl font-bold text-[14px] hover:bg-ink-50 transition disabled:opacity-50"
           >
             下書き保存（継続）
           </button>
@@ -689,7 +682,7 @@ export default function InstructionForm({ initialData }: InstructionFormProps) {
             type="button"
             onClick={() => handleDraftSave(false)}
             disabled={saving}
-            className="flex-1 py-3.5 bg-amber-50 border-2 border-amber-300 text-amber-700 rounded-xl font-bold text-base hover:bg-amber-100 transition disabled:opacity-50"
+            className="flex-1 py-3.5 bg-warn-soft border-2 border-warn/30 text-warn rounded-xl font-bold text-[14px] hover:bg-warn/10 transition disabled:opacity-50"
           >
             下書き保存して終了
           </button>
@@ -697,9 +690,9 @@ export default function InstructionForm({ initialData }: InstructionFormProps) {
             type="button"
             onClick={handleCompleteClick}
             disabled={saving}
-            className="flex-1 py-3.5 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-xl font-bold text-lg hover:from-emerald-600 hover:to-green-700 transition shadow-md disabled:opacity-50"
+            className="flex-1 py-3.5 bg-accent hover:bg-accent-ink text-white rounded-xl font-bold text-[16px] transition shadow-md disabled:opacity-50"
           >
-            {saving ? '保存中...' : '完成'}
+            {saving ? '保存中...' : '完成・公開'}
           </button>
         </div>
         <button
