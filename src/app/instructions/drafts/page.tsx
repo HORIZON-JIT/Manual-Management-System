@@ -3,9 +3,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { WorkInstruction, getCategoryLabel } from '@/types/instruction';
+import { Plus, FileEdit, Trash2, Upload } from 'lucide-react';
+import { WorkInstruction } from '@/types/instruction';
 import { getAllInstructions, deleteInstruction } from '@/lib/storage';
 import { setTempData } from '@/lib/tempStorage';
+import CategoryChip from '@/components/CategoryChip';
 
 export default function DraftsPage() {
   const router = useRouter();
@@ -14,9 +16,8 @@ export default function DraftsPage() {
 
   useEffect(() => {
     const all = getAllInstructions();
-    // Show drafts (status === 'draft' or status is undefined for legacy data)
     const draftList = all
-      .filter((inst) => !inst.status || inst.status === 'draft')
+      .filter(inst => !inst.status || inst.status === 'draft')
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
     setDrafts(draftList);
   }, []);
@@ -24,12 +25,12 @@ export default function DraftsPage() {
   const handleDelete = (id: string, title: string) => {
     if (!confirm(`「${title}」を削除しますか？`)) return;
     deleteInstruction(id);
-    setDrafts((prev) => prev.filter((d) => d.id !== id));
+    setDrafts(prev => prev.filter(d => d.id !== id));
   };
 
   const handleDeleteAll = () => {
-    if (!confirm(`下書き ${drafts.length} 件をすべて削除しますか？\nブラウザの保存容量が解放されます。`)) return;
-    drafts.forEach((d) => deleteInstruction(d.id));
+    if (!confirm(`下書き ${drafts.length} 件をすべて削除しますか？`)) return;
+    drafts.forEach(d => deleteInstruction(d.id));
     setDrafts([]);
   };
 
@@ -47,118 +48,133 @@ export default function DraftsPage() {
         await setTempData('drive_import_instruction', JSON.stringify(json));
         router.push('/instructions/edit?source=drive');
       } catch {
-        alert('JSONファイルの読み込みに失敗しました。ファイルが壊れている可能性があります。');
+        alert('JSONファイルの読み込みに失敗しました。');
       }
     };
     reader.readAsText(file);
-    // reset so same file can be re-selected
     e.target.value = '';
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".json"
-        className="hidden"
-        onChange={handleJsonFileChange}
-      />
-      <div className="flex items-center gap-3 mb-8">
-        <Link href="/" className="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1 transition">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          戻る
-        </Link>
-        <h1 className="text-2xl font-bold text-slate-800">途中から編集</h1>
-        <span className="text-sm text-slate-400 ml-1">{drafts.length} 件</span>
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="ml-auto text-xs px-3 py-1.5 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition"
-        >
-          JSONから読み込む
-        </button>
-        {drafts.length >= 2 && (
+    <div className="px-8 py-6 pb-10">
+      <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleJsonFileChange} />
+
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6">
+        <h1 className="text-[24px] font-bold font-display text-ink-900 tracking-tight">下書き</h1>
+        <span className="text-[13px] text-ink-400">{drafts.length} 件</span>
+        <div className="ml-auto flex items-center gap-2">
           <button
-            onClick={handleDeleteAll}
-            className="text-xs px-3 py-1.5 text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] text-ink-600 border border-ink-200 rounded-lg hover:border-ink-400 transition"
           >
-            すべて削除
+            <Upload size={12} /> JSON から読み込む
           </button>
-        )}
+          {drafts.length >= 2 && (
+            <button
+              onClick={handleDeleteAll}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] text-warn border border-warn/30 rounded-lg hover:bg-warn-soft transition"
+            >
+              <Trash2 size={12} /> すべて削除
+            </button>
+          )}
+          <Link
+            href="/instructions/new"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-[13px] font-semibold bg-accent hover:bg-accent-ink text-white rounded-lg transition"
+          >
+            <Plus size={14} strokeWidth={2.5} /> 新規作成
+          </Link>
+        </div>
       </div>
 
       {drafts.length === 0 ? (
-        <div className="text-center py-20">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-slate-100 rounded-2xl mb-5">
-            <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
+        <div className="py-20 text-center bg-surface border border-dashed border-ink-200 rounded-xl">
+          <div className="w-14 h-14 bg-ink-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <FileEdit size={24} className="text-ink-400" />
           </div>
-          <p className="text-slate-500 text-lg mb-2">下書きがありません</p>
-          <p className="text-slate-400 text-sm mb-6">新規作成で手順書を作り始めましょう</p>
-          <div className="flex flex-col items-center gap-3">
+          <p className="text-ink-500 text-[16px] mb-1.5">下書きがありません</p>
+          <p className="text-ink-400 text-[13px] mb-6">新規作成で手順書を作り始めましょう</p>
+          <div className="flex flex-col items-center gap-2">
             <Link
               href="/instructions/new"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium hover:from-blue-600 hover:to-indigo-600 transition shadow-md"
+              className="inline-flex items-center gap-2 px-6 py-2.5 bg-accent hover:bg-accent-ink text-white rounded-xl font-semibold text-[13px] transition"
             >
-              新規作成
+              <Plus size={14} strokeWidth={2.5} /> 新規作成
             </Link>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="text-sm px-5 py-2.5 text-blue-600 border border-blue-200 rounded-xl hover:bg-blue-50 transition"
+              className="text-[13px] px-5 py-2 text-accent-ink border border-accent/30 rounded-xl hover:bg-accent-soft transition"
             >
-              JSONから読み込む
+              JSON から読み込む
             </button>
           </div>
         </div>
       ) : (
-        <div className="space-y-3">
-          {drafts.map((inst) => (
-            <div
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {drafts.map(inst => (
+            <DraftCard
               key={inst.id}
-              className="bg-white rounded-xl border border-slate-200 hover:border-slate-300 hover:shadow-md transition-all duration-200 overflow-hidden"
-            >
-              <div className="flex items-center gap-4 p-5">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h2 className="font-semibold text-slate-800 truncate">{inst.title || '無題の手順書'}</h2>
-                    <span
-                      className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${
-                        inst.category === 'pc_work'
-                          ? 'bg-blue-50 text-blue-600'
-                          : 'bg-orange-50 text-orange-600'
-                      }`}
-                    >
-                      {getCategoryLabel(inst.category)}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-slate-400">
-                    <span>{inst.steps.length} ステップ</span>
-                    <span>最終更新: {new Date(inst.updatedAt).toLocaleString('ja-JP')}</span>
-                    {inst.createdBy && <span>作成者: {inst.createdBy}</span>}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Link
-                    href={`/instructions/edit?id=${inst.id}`}
-                    className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg text-sm font-medium hover:from-blue-600 hover:to-indigo-600 transition shadow-sm"
-                  >
-                    編集を再開
-                  </Link>
-                  <button
-                    onClick={() => handleDelete(inst.id, inst.title)}
-                    className="px-3 py-2 text-sm text-slate-400 hover:text-red-600 transition"
-                  >
-                    削除
-                  </button>
-                </div>
-              </div>
-            </div>
+              inst={inst}
+              onDelete={() => handleDelete(inst.id, inst.title)}
+            />
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function DraftCard({ inst, onDelete }: { inst: WorkInstruction; onDelete: () => void }) {
+  const stepsTotal = inst.steps.length;
+  const stepsWithTitle = inst.steps.filter(s => s.title.trim()).length;
+  const progress = stepsTotal > 0 ? (stepsWithTitle / stepsTotal) * 100 : 0;
+
+  return (
+    <div className="bg-surface border border-ink-200 rounded-xl p-4 flex flex-col gap-3 hover:shadow-2 transition-shadow">
+      <div className="flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1.5">
+            <CategoryChip raw={inst.category} />
+          </div>
+          <h2 className="font-bold text-[14px] text-ink-900 line-clamp-2 leading-snug">
+            {inst.title || '無題の手順書'}
+          </h2>
+        </div>
+      </div>
+
+      <div className="text-[11px] text-ink-500 flex gap-3">
+        <span>{stepsTotal} ステップ</span>
+        <span>更新: {new Date(inst.updatedAt).toLocaleDateString('ja-JP')}</span>
+        {inst.createdBy && <span>{inst.createdBy}</span>}
+      </div>
+
+      {/* Progress bar */}
+      <div>
+        <div className="flex justify-between text-[10px] text-ink-400 mb-1">
+          <span>入力済み</span>
+          <span>{stepsWithTitle} / {stepsTotal}</span>
+        </div>
+        <div className="h-1.5 bg-ink-100 rounded-full overflow-hidden">
+          <div className="h-full bg-accent rounded-full transition-all" style={{ width: `${progress}%` }} />
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-2 pt-1">
+        <Link
+          href={`/instructions/edit?id=${inst.id}`}
+          className="flex-1 flex items-center justify-center gap-1.5 h-8 bg-accent hover:bg-accent-ink text-white text-[12px] font-semibold rounded-lg transition"
+        >
+          <FileEdit size={12} /> 編集を再開
+        </Link>
+        <button
+          onClick={onDelete}
+          className="h-8 px-2.5 text-[12px] text-ink-400 hover:text-warn border border-ink-200 hover:border-warn/30 rounded-lg transition flex items-center justify-center"
+          title="削除"
+        >
+          <Trash2 size={13} />
+        </button>
+      </div>
     </div>
   );
 }
