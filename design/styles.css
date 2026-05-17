@@ -1,0 +1,195 @@
+/* ============================================================
+   手順書システム リデザイン — 共有スタイル
+   3パターン共通のトークン。各パターンが上書きする変数も用意。
+   ============================================================ */
+
+:root {
+  /* base palette */
+  --ink-900: #0B1B2B;
+  --ink-800: #11253A;
+  --ink-700: #1F3A52;
+  --ink-600: #3A516B;
+  --ink-500: #64748B;
+  --ink-400: #94A3B8;
+  --ink-300: #CBD5E1;
+  --ink-200: #E2E8F0;
+  --ink-100: #EEF1F4;
+  --ink-50:  #F4F6F8;
+  --bg:      #F8F8F4;
+  --surface: #FFFFFF;
+
+  /* accent — overridden per pattern */
+  --accent: #2F5BFF;
+  --accent-soft: #E8EDFF;
+  --accent-ink: #0A2EB8;
+
+  --warn:    #C2410C;
+  --warn-soft: #FEEFE5;
+  --ok:      #047857;
+  --ok-soft: #E2F3EB;
+  --info:    #0369A1;
+  --info-soft: #E6F2FA;
+
+  --font-sans: 'Noto Sans JP', 'Plus Jakarta Sans', -apple-system, system-ui, sans-serif;
+  --font-display: 'Plus Jakarta Sans', 'Noto Sans JP', -apple-system, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --radius-sm: 6px;
+  --radius:    10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  --shadow-1: 0 1px 2px rgba(11,27,43,.04), 0 1px 1px rgba(11,27,43,.03);
+  --shadow-2: 0 6px 24px -8px rgba(11,27,43,.10), 0 2px 4px rgba(11,27,43,.04);
+}
+
+/* Pattern overrides */
+.pat-b {
+  --ink-900: #050D17;
+  --ink-800: #0A1726;
+  --ink-700: #14253A;
+  --ink-600: #2C4258;
+  --accent: #0EA37D;
+  --accent-soft: #E0F4EE;
+  --accent-ink: #086150;
+  --bg: #FAFAF6;
+}
+
+/* Reset within artboards */
+.frame, .frame * { box-sizing: border-box; }
+.frame {
+  font-family: var(--font-sans);
+  color: var(--ink-900);
+  background: var(--bg);
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-feature-settings: "palt";
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Browser/Phone bezels */
+.bezel-pc {
+  background: #DDD9D0;
+  padding: 10px 10px 0 10px;
+  border-radius: 14px;
+  height: 100%;
+  display: flex; flex-direction: column;
+}
+.bezel-pc .pc-bar {
+  display:flex; align-items:center; gap:8px; padding: 0 4px 8px;
+}
+.bezel-pc .pc-lights { display:flex; gap:6px; }
+.bezel-pc .pc-light { width:10px; height:10px; border-radius:50%; background:#C9C4B8; }
+.bezel-pc .pc-url {
+  flex:1; height:22px; background:#fff; border-radius: 6px;
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--ink-500); display:flex; align-items:center; padding:0 10px;
+}
+.bezel-pc .pc-screen {
+  flex:1; background: var(--bg); border-radius: 8px 8px 0 0; overflow:hidden;
+}
+
+.bezel-phone {
+  background: #1B1B1B;
+  padding: 10px;
+  border-radius: 36px;
+  height: 100%;
+  display:flex; flex-direction:column;
+}
+.bezel-phone .phone-screen {
+  flex:1; background: var(--bg); border-radius: 28px; overflow:hidden;
+  position: relative;
+}
+.bezel-phone .phone-notch {
+  position:absolute; top: 8px; left: 50%; transform: translateX(-50%);
+  width: 100px; height: 24px; background: #1B1B1B; border-radius: 12px;
+  z-index: 10;
+}
+.bezel-phone .phone-status {
+  height: 36px; display:flex; align-items:center; justify-content:space-between;
+  padding: 0 22px 0 22px; font-size: 11px; font-weight: 600;
+  position: relative;
+}
+.bezel-phone .phone-status .right { display:flex; gap:4px; align-items:center; }
+
+/* Common atoms */
+.chip {
+  display:inline-flex; align-items:center; gap:4px;
+  height: 22px; padding: 0 8px; border-radius: 999px;
+  background: var(--ink-100); color: var(--ink-700);
+  font-size: 11px; font-weight: 600; line-height: 1;
+  white-space: nowrap;
+}
+.chip.accent { background: var(--accent-soft); color: var(--accent-ink); }
+.chip.warn   { background: var(--warn-soft); color: var(--warn); }
+.chip.ok     { background: var(--ok-soft); color: var(--ok); }
+.chip.info   { background: var(--info-soft); color: var(--info); }
+.chip.ghost  { background: transparent; border:1px solid var(--ink-200); }
+
+.btn {
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  height: 36px; padding: 0 14px; border-radius: 8px;
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  border: 1px solid transparent; cursor: pointer; line-height: 1;
+  transition: filter .15s, background .15s;
+  white-space: nowrap;
+}
+.btn.primary { background: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(0.95); }
+.btn.ghost { background: transparent; color: var(--ink-700); border-color: var(--ink-200); }
+.btn.dark  { background: var(--ink-900); color: #fff; }
+.btn.lg    { height: 44px; padding: 0 18px; font-size: 14px; }
+.btn.xl    { height: 56px; padding: 0 22px; font-size: 16px; border-radius: 12px; }
+.btn.icon  { width: 36px; padding: 0; }
+
+.divider { height: 1px; background: var(--ink-200); }
+
+/* Stripey placeholder for images */
+.placeholder {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(11,27,43,0.05),
+    rgba(11,27,43,0.05) 6px,
+    rgba(11,27,43,0.02) 6px,
+    rgba(11,27,43,0.02) 12px
+  );
+  background-color: var(--ink-50);
+  border: 1px solid var(--ink-200);
+  display:flex; align-items:center; justify-content:center;
+  color: var(--ink-500); font-family: var(--font-mono); font-size: 11px;
+  border-radius: var(--radius);
+}
+
+/* Issue card */
+.issue {
+  background: #fff; border: 1px solid var(--ink-200); border-radius: var(--radius-lg);
+  padding: 18px 20px; display:flex; flex-direction:column; gap:6px;
+}
+.issue .num {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--warn); letter-spacing: 0.1em;
+}
+.issue h4 { margin: 0; font-size: 16px; font-weight: 700; color: var(--ink-900); }
+.issue p  { margin: 0; font-size: 13px; color: var(--ink-600); line-height: 1.6; }
+
+/* Hide scrollbars in frames */
+.frame ::-webkit-scrollbar { display: none; }
+.frame * { scrollbar-width: none; }
+
+/* Used by all status pills */
+.dot { width: 6px; height: 6px; border-radius: 50%; display:inline-block; }
+
+/* Body text helpers */
+.muted { color: var(--ink-500); }
+.tiny  { font-size: 11px; }
+.small { font-size: 12px; }
+.label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-500); }
+
+/* Reading content */
+.prose { font-size: 14px; line-height: 1.75; color: var(--ink-800); }
+.prose h2 { font-size: 18px; font-weight: 700; margin: 0 0 8px; }
+.prose p { margin: 0 0 12px; }
+.prose ul { margin: 0 0 12px; padding-left: 18px; }
+.prose li { margin-bottom: 4px; }
