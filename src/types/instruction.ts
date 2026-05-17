@@ -1,3 +1,5 @@
+import { getCategoryDisplay } from '../lib/categoryRegistry';
+
 export interface CheckItem {
   id: string;
   label: string;
@@ -101,6 +103,7 @@ export interface WorkInstruction {
   conditionGroups?: ConditionGroup[];
 }
 
+/** @deprecated Use OFFICIAL_CATEGORIES from lib/categoryRegistry instead */
 export const CATEGORY_LABELS: Record<string, string> = {
   pc_work: 'PC事務作業',
   packing: '梱包作業',
@@ -108,7 +111,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   現場作業: '現場作業',
 };
 
-/** Get display label for a category (falls back to the raw value for custom categories) */
+/** Get display label for a category. Delegates to categoryRegistry for alias resolution. */
 export function getCategoryLabel(category: string): string {
-  return CATEGORY_LABELS[category] || category;
+  return getCategoryDisplay(category).label;
 }
