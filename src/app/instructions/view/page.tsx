@@ -3,7 +3,11 @@
 import { useEffect, useState, Suspense, Fragment } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { WorkInstruction, InstructionSnapshot, getCategoryLabel, getStepImages, getImageCaption } from '@/types/instruction';
+import {
+  Pin, Share2, Printer, FileEdit, ChevronDown,
+  Check, AlertTriangle, ExternalLink, GitBranch,
+} from 'lucide-react';
+import { WorkInstruction, InstructionSnapshot, getStepImages, getImageCaption } from '@/types/instruction';
 import { getInstruction, importInstruction } from '@/lib/storage';
 import { parseShareData } from '@/lib/shareLink';
 import { downloadDriveFile } from '@/lib/googleDrive';
@@ -11,25 +15,25 @@ import { isGoogleConfigured, getAuthState, addAuthListener, GoogleAuthState, sig
 import { getTempData } from '@/lib/tempStorage';
 import ViewHistoryModal from '@/components/ViewHistoryModal';
 import FlowchartModal from '@/components/FlowchartModal';
+import CategoryChip from '@/components/CategoryChip';
+
+const TABS = ['手順', 'フローチャート', '更新履歴', '添付ファイル', '関連手順'] as const;
+type Tab = typeof TABS[number];
 
 function getYouTubeEmbedUrl(url: string): string | null {
   try {
     const parsed = new URL(url);
     let videoId: string | null = null;
-    if (parsed.hostname.includes('youtube.com')) {
-      videoId = parsed.searchParams.get('v');
-    } else if (parsed.hostname === 'youtu.be') {
-      videoId = parsed.pathname.slice(1);
-    }
+    if (parsed.hostname.includes('youtube.com')) videoId = parsed.searchParams.get('v');
+    else if (parsed.hostname === 'youtu.be') videoId = parsed.pathname.slice(1);
     return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 function InstructionViewContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+
   const [instruction, setInstruction] = useState<WorkInstruction | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSharedView, setIsSharedView] = useState(false);
@@ -41,6 +45,9 @@ function InstructionViewContent() {
   const [showHistory, setShowHistory] = useState(false);
   const [showFlowchart, setShowFlowchart] = useState(false);
   const [viewingSnapshot, setViewingSnapshot] = useState<InstructionSnapshot | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>('手順');
+  const [openStepId, setOpenStepId] = useState<string | null>(null);
+  const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!isGoogleConfigured()) return;
@@ -50,7 +57,6 @@ function InstructionViewContent() {
   useEffect(() => {
     setCheckStates({});
 
-    // Priority 1: shared data in hash fragment
     if (window.location.hash) {
       const shared = parseShareData(window.location.hash);
       if (shared) {
@@ -61,51 +67,32 @@ function InstructionViewContent() {
       }
     }
 
-    // Priority 2: preview from IndexedDB
     if (searchParams.get('source') === 'preview') {
       getTempData('preview_instruction').then((raw) => {
         if (raw) {
-          try {
-            setInstruction(JSON.parse(raw) as WorkInstruction);
-            setIsPreviewView(true);
-          } catch { /* fall through */ }
+          try { setInstruction(JSON.parse(raw) as WorkInstruction); setIsPreviewView(true); } catch { /* fall through */ }
         }
         setLoading(false);
       }).catch(() => setLoading(false));
       return;
     }
 
-    // Priority 3: load from Drive by driveFileId
     const driveFileId = searchParams.get('driveFileId');
     if (driveFileId) {
       initGoogleAuth().then(() => {
         const state = getAuthState();
-        if (!state.isSignedIn) {
-          setLoading(false);
-          return;
-        }
+        if (!state.isSignedIn) { setLoading(false); return; }
         return downloadDriveFile(driveFileId)
-          .then((text) => {
-            const data = JSON.parse(text) as WorkInstruction;
-            setInstruction(data);
-          })
+          .then(text => { setInstruction(JSON.parse(text) as WorkInstruction); })
           .catch(() => setInstruction(null));
       }).finally(() => setLoading(false));
       return;
     }
 
-    // Priority 4: load from localStorage by id
     const id = searchParams.get('id');
-    if (id) {
-      const data = getInstruction(id);
-      setInstruction(data || null);
-    }
+    if (id) setInstruction(getInstruction(id) || null);
     setLoading(false);
   }, [searchParams, auth.isSignedIn]);
-
-  const handlePrint = () => {
-    window.print();
-  };
 
   const handleImport = () => {
     if (!instruction) return;
@@ -117,7 +104,7 @@ function InstructionViewContent() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
-        <p className="text-slate-500">読み込み中...</p>
+        <p className="text-ink-500 text-[14px]">読み込み中…</p>
       </div>
     );
   }
@@ -127,27 +114,20 @@ function InstructionViewContent() {
     if (driveFileId && !auth.isSignedIn) {
       return (
         <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4 px-4">
-          <p className="text-slate-700 text-base font-medium">この手順書を閲覧するにはGoogleログインが必要です</p>
+          <p className="text-ink-700 font-medium">この手順書を閲覧するには Google ログインが必要です</p>
           {isGoogleConfigured() && (
-            <button
-              onClick={() => signIn()}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition"
-            >
-              Googleでログイン
+            <button onClick={() => signIn()} className="px-6 py-3 bg-accent hover:bg-accent-ink text-white font-bold rounded-xl transition">
+              Google でログイン
             </button>
           )}
-          <Link href="/" className="text-sm text-blue-600 hover:text-blue-800">
-            一覧に戻る
-          </Link>
+          <Link href="/" className="text-sm text-accent-ink hover:underline">一覧に戻る</Link>
         </div>
       );
     }
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
-        <p className="text-slate-500 text-lg">手順書が見つかりません</p>
-        <Link href="/" className="text-blue-600 hover:text-blue-800">
-          一覧に戻る
-        </Link>
+        <p className="text-ink-500 text-lg">手順書が見つかりません</p>
+        <Link href="/manuals" className="text-accent-ink hover:underline">一覧に戻る</Link>
       </div>
     );
   }
@@ -157,7 +137,7 @@ function InstructionViewContent() {
   const displayDescription = viewingSnapshot?.description ?? instruction.description;
   const displayCategory = viewingSnapshot?.category ?? instruction.category;
   const displayKeywords = viewingSnapshot?.keywords ?? instruction.keywords;
-  const hasConditions = instruction.conditions && instruction.conditions.length > 0;
+  const hasConditions = !!(instruction.conditions && instruction.conditions.length > 0);
 
   const condGroupMap = new Map<string, string>();
   const groupConditions = new Map<string, typeof instruction.conditions>();
@@ -169,13 +149,10 @@ function InstructionViewContent() {
       groupConditions.get(g)!.push(c);
     }
   }
-  const getStepGroup = (s: { conditionId?: string }) =>
-    s.conditionId ? condGroupMap.get(s.conditionId) : undefined;
 
   const groupMetaMap = new Map<string, { parentConditionId?: string }>();
-  for (const g of instruction.conditionGroups ?? []) {
-    groupMetaMap.set(g.id, g);
-  }
+  for (const g of instruction.conditionGroups ?? []) groupMetaMap.set(g.id, g);
+
   const isGroupVisible = (groupId: string, visited = new Set<string>()): boolean => {
     if (visited.has(groupId)) return true;
     visited.add(groupId);
@@ -191,6 +168,9 @@ function InstructionViewContent() {
     }
     return parentSel === meta.parentConditionId;
   };
+
+  const getStepGroup = (s: { conditionId?: string }) =>
+    s.conditionId ? condGroupMap.get(s.conditionId) : undefined;
 
   const visibleSteps = hasConditions
     ? sortedSteps.filter(s => {
@@ -208,366 +188,395 @@ function InstructionViewContent() {
 
   const stepNumbers: number[] = [];
   {
-    let logicalNum = 0;
+    let num = 0;
     const seenGroups = new Set<string>();
     for (const s of visibleSteps) {
       const group = getStepGroup(s);
-      if (group) {
-        if (!seenGroups.has(group)) {
-          logicalNum++;
-          seenGroups.add(group);
-        }
-      } else {
-        logicalNum++;
-      }
-      stepNumbers.push(logicalNum);
+      if (group) { if (!seenGroups.has(group)) { num++; seenGroups.add(group); } }
+      else num++;
+      stepNumbers.push(num);
     }
   }
 
   const isSequential = !!instruction.sequential;
+  const totalSteps = stepNumbers[stepNumbers.length - 1] ?? 0;
+  const doneCount = completedSteps.size;
+  const progressPct = totalSteps > 0 ? (doneCount / totalSteps) * 100 : 0;
+
+  // Open first non-completed step on mount
+  if (openStepId === null && visibleSteps.length > 0) {
+    const firstOpen = visibleSteps.find(s => !completedSteps.has(s.id));
+    if (firstOpen) setOpenStepId(firstOpen.id);
+  }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6">
-      {/* Preview banner */}
-      {isPreviewView && (
-        <div className="bg-violet-50 border border-violet-200 rounded-lg px-4 py-3 mb-4 flex items-center justify-between no-print">
-          <p className="text-sm text-violet-800">
-            DriveのJSONファイルをプレビュー表示しています
-          </p>
+    <div>
+      {/* Banners */}
+      {(isPreviewView || isSharedView || viewingSnapshot) && (
+        <div className={[
+          'px-8 py-3 text-sm flex items-center justify-between no-print',
+          isPreviewView ? 'bg-info-soft text-info' :
+          isSharedView  ? 'bg-accent-soft text-accent-ink' :
+          'bg-warn-soft text-warn',
+        ].join(' ')}>
+          <span>
+            {isPreviewView ? 'Drive の JSON をプレビュー表示しています' :
+             isSharedView  ? '共有された手順書を閲覧しています' :
+             '過去バージョンを表示中'}
+          </span>
           <button
-            onClick={handleImport}
-            className="px-3 py-1.5 bg-violet-600 text-white rounded text-sm hover:bg-violet-700 transition"
+            onClick={viewingSnapshot ? () => setViewingSnapshot(null) : handleImport}
+            className="px-3 py-1.5 rounded-lg border border-current font-semibold text-[12px] hover:opacity-80 transition"
           >
-            インポートして保存
+            {viewingSnapshot ? '現在のバージョンに戻る' : 'インポートして保存'}
           </button>
         </div>
       )}
 
-      {/* Shared view banner */}
-      {isSharedView && (
-        <div className="bg-purple-50 border border-purple-200 rounded-lg px-4 py-3 mb-4 flex items-center justify-between no-print">
-          <p className="text-sm text-purple-800">
-            共有された手順書を閲覧しています
-          </p>
-          <button
-            onClick={handleImport}
-            className="px-3 py-1.5 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 transition"
-          >
-            インポートして保存
-          </button>
+      {/* Hero */}
+      <div className="px-12 pt-6 pb-[18px] border-b border-ink-200 bg-surface">
+        <div className="flex items-center gap-2 mb-2.5">
+          <CategoryChip raw={displayCategory} size="md" />
+          {(displayKeywords ?? []).slice(0, 3).map(kw => (
+            <span key={kw} className="px-2.5 py-0.5 rounded-full text-[11px] border border-ink-200 text-ink-500 bg-ink-50">
+              #{kw}
+            </span>
+          ))}
         </div>
-      )}
 
-      {/* Action bar */}
-      <div className="flex flex-wrap items-center gap-2 mb-6 no-print">
-        <Link href="/" className="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1 transition">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          一覧に戻る
-        </Link>
-        <div className="flex-1" />
-        {instruction.updateHistory && instruction.updateHistory.some(e => !!e.snapshot) && (
-          <button
-            onClick={() => setShowHistory(true)}
-            className="px-3 py-1.5 bg-slate-50 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-100 transition"
-          >
-            改版履歴
-          </button>
-        )}
-        <button
-          onClick={() => setShowFlowchart(true)}
-          className="px-3 py-1.5 bg-slate-50 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-100 transition"
-        >
-          フロー図
-        </button>
-        {!isPreviewView && (
-          <>
-            <button
-              onClick={handlePrint}
-              className="px-3 py-1.5 bg-slate-50 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-100 transition"
-            >
-              印刷
-            </button>
-          </>
-        )}
-        {!isSharedView && !isPreviewView && (
-          <>
-            <Link
-              href={`/instructions/edit?id=${instruction.id}`}
-              className="px-3 py-1.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg text-sm hover:from-blue-600 hover:to-indigo-600 transition shadow-sm"
-            >
-              編集
-            </Link>
-          </>
-        )}
+        <div className="grid grid-cols-[1fr_220px] gap-6 items-start">
+          <div>
+            <h1 className="text-[28px] font-bold font-display text-ink-900 tracking-tight leading-tight mb-2.5">
+              {displayTitle}
+            </h1>
+            {displayDescription && (
+              <p className="text-[14px] text-ink-500 leading-relaxed max-w-[640px]">
+                {displayDescription}
+              </p>
+            )}
+            <div className="flex items-center gap-4 mt-3.5 text-[12px]">
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-6 rounded-full bg-accent text-white flex items-center justify-center text-[11px] font-bold">
+                  {(instruction.createdBy ?? '?')[0]}
+                </div>
+                <span>
+                  <b className="text-ink-800">{instruction.createdBy ?? '不明'}</b>
+                </span>
+              </div>
+              <span className="text-ink-400">
+                最終更新 {instruction.updatedAt?.slice(0, 10)}
+              </span>
+              <span className="font-mono text-[11px] font-bold text-ink-600">
+                {instruction.id?.slice(0, 8)}
+              </span>
+            </div>
+          </div>
+
+          {/* Progress card */}
+          <div className="bg-ink-50 border border-ink-200 rounded-xl p-3.5 no-print">
+            <p className="text-[10px] font-bold tracking-widest uppercase text-ink-500 mb-1">進捗</p>
+            <p className="text-[22px] font-bold font-display text-ink-900">
+              {doneCount}{' '}
+              <span className="text-ink-400 font-normal text-base">/ {totalSteps}</span>
+            </p>
+            <div className="h-[5px] bg-ink-100 rounded-full mt-2 overflow-hidden">
+              <div className="h-full bg-accent rounded-full transition-all" style={{ width: `${progressPct}%` }} />
+            </div>
+            <div className="flex gap-1.5 mt-3">
+              <button className="flex-1 h-8 text-[12px] font-semibold rounded-lg border border-ink-200 bg-surface text-ink-600 hover:border-ink-400 hover:text-ink-900 transition flex items-center justify-center gap-1">
+                <Pin size={12} /> ピン
+              </button>
+              <button
+                className="flex-1 h-8 text-[12px] font-semibold rounded-lg border border-ink-200 bg-surface text-ink-600 hover:border-ink-400 hover:text-ink-900 transition flex items-center justify-center"
+                onClick={() => setShowHistory(true)}
+              >
+                <Share2 size={12} />
+              </button>
+              <button
+                className="h-8 px-2.5 text-[12px] font-semibold rounded-lg border border-ink-200 bg-surface text-ink-600 hover:border-ink-400 hover:text-ink-900 transition flex items-center justify-center"
+                onClick={() => window.print()}
+              >
+                <Printer size={12} />
+              </button>
+            </div>
+            {!isSharedView && !isPreviewView && (
+              <Link
+                href={`/instructions/edit?id=${instruction.id}`}
+                className="mt-2 flex items-center justify-center gap-1.5 h-[34px] w-full bg-accent hover:bg-accent-ink text-white text-[12px] font-semibold rounded-lg transition"
+              >
+                <FileEdit size={13} /> 編集する
+              </Link>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Snapshot viewing banner */}
-      {viewingSnapshot && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4 flex items-center justify-between no-print">
-          <p className="text-sm text-amber-800">過去バージョンを表示中</p>
+      {/* Tabs */}
+      <div className="flex px-12 border-b border-ink-200 bg-surface gap-0 no-print">
+        {TABS.map(tab => (
           <button
-            onClick={() => setViewingSnapshot(null)}
-            className="px-3 py-1.5 bg-amber-600 text-white rounded text-sm hover:bg-amber-700 transition"
+            key={tab}
+            onClick={() => {
+              setActiveTab(tab);
+              if (tab === 'フローチャート') setShowFlowchart(true);
+              if (tab === '更新履歴') setShowHistory(true);
+            }}
+            className={[
+              'px-4 py-3 text-[13px] font-semibold transition-colors border-b-2 -mb-px',
+              activeTab === tab
+                ? 'border-accent text-accent-ink'
+                : 'border-transparent text-ink-500 hover:text-ink-700',
+            ].join(' ')}
           >
-            現在のバージョンに戻る
+            {tab}
           </button>
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">{displayTitle}</h1>
-          <span
-            className={`shrink-0 text-sm px-3 py-1 rounded-full font-medium ${
-              displayCategory === 'pc_work'
-                ? 'bg-blue-50 text-blue-600'
-                : 'bg-orange-50 text-orange-600'
-            }`}
-          >
-            {getCategoryLabel(displayCategory)}
-          </span>
-        </div>
-        {displayDescription && (
-          <p className="text-slate-600 mb-4">{displayDescription}</p>
-        )}
-        <div className="text-xs text-slate-400 flex flex-wrap gap-4">
-          <span>作成日: {new Date(instruction.createdAt).toLocaleDateString('ja-JP')}{instruction.createdBy ? ` (${instruction.createdBy})` : ''}</span>
-          <span>更新日: {new Date(instruction.updatedAt).toLocaleDateString('ja-JP')}{instruction.updatedBy ? ` (${instruction.updatedBy})` : ''}</span>
-          <span>{sortedSteps.length} ステップ</span>
-        </div>
-        {displayKeywords && displayKeywords.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {displayKeywords.map((kw, i) => (
-              <span
-                key={i}
-                className="inline-block text-xs px-2.5 py-1 bg-slate-100 text-slate-600 rounded-full border border-slate-200"
-              >
-                {kw}
-              </span>
-            ))}
-          </div>
-        )}
+        ))}
       </div>
 
       {/* Steps */}
-      <div className="space-y-4">
-        {(isSequential ? visibleSteps.slice(0, revealedCount) : visibleSteps).map((step, index) => {
-          const prevStep = index > 0 ? visibleSteps[index - 1] : null;
-          const group = getStepGroup(step);
-          const prevGroup = prevStep ? getStepGroup(prevStep) : undefined;
-          const showInlineTabs = hasConditions && !!group && group !== prevGroup;
-          const zoneConds = group ? groupConditions.get(group) ?? [] : [];
-          const zoneSel = group ? (selectedConditions[group] ?? null) : null;
-          const isLastRevealed = isSequential && index === Math.min(revealedCount, visibleSteps.length) - 1;
+      <div className="px-12 py-6 bg-bg">
+        <div className="max-w-[780px] space-y-2.5">
 
-          return (
-          <Fragment key={step.id}>
-            {showInlineTabs && group && (
-              <div className="bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 no-print">
-                <p className="text-xs text-slate-500 mb-2 font-medium">▼ 条件で表示を切り替え</p>
-                <div className="flex gap-2 flex-wrap">
-                  {zoneConds.map((cond, condIdx) => {
-                    const isActive = zoneSel === cond.id || (zoneSel === null && condIdx === 0);
-                    return (
-                    <button
-                      key={cond.id}
-                      onClick={() => { setSelectedConditions(prev => ({ ...prev, [group]: cond.id })); setRevealedCount(1); }}
-                      className={`px-4 py-1.5 rounded-full text-sm font-medium transition ${
-                        isActive
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                      }`}
-                    >
-                      {cond.label}
-                    </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            <div
-              className="bg-white rounded-xl border border-slate-200 overflow-hidden"
-            >
-            <div className="bg-gradient-to-r from-slate-50 to-blue-50/50 px-5 py-3.5 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <span className="flex items-center justify-center w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 text-white rounded-lg font-bold text-sm shrink-0 shadow-sm">
-                  {stepNumbers[index]}
-                </span>
-                <h2 className="font-semibold text-slate-800 flex-1">{step.title}</h2>
-              </div>
+          {/* Snapshot banner */}
+          {viewingSnapshot && (
+            <div className="bg-warn-soft border border-warn/20 rounded-xl px-4 py-3 text-sm text-warn flex items-center justify-between mb-4">
+              <span>過去バージョンを表示中</span>
+              <button onClick={() => setViewingSnapshot(null)} className="font-semibold hover:underline">
+                現在のバージョンに戻る
+              </button>
             </div>
+          )}
 
-            <div className="p-5 space-y-4">
-              {step.description && (
-                <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">
-                  {step.description}
-                </p>
-              )}
+          {(isSequential ? visibleSteps.slice(0, revealedCount) : visibleSteps).map((step, index) => {
+            const prevStep = index > 0 ? visibleSteps[index - 1] : null;
+            const group = getStepGroup(step);
+            const prevGroup = prevStep ? getStepGroup(prevStep) : undefined;
+            const showInlineTabs = hasConditions && !!group && group !== prevGroup;
+            const zoneConds = group ? groupConditions.get(group) ?? [] : [];
+            const zoneSel = group ? (selectedConditions[group] ?? null) : null;
+            const isLastRevealed = isSequential && index === Math.min(revealedCount, visibleSteps.length) - 1;
+            const isDone = completedSteps.has(step.id);
+            const isOpen = openStepId === step.id;
 
-              {getStepImages(step).map((imgUrl, imgIdx) => (
-                <div key={imgIdx} className="rounded-lg border border-slate-200 overflow-hidden">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={imgUrl}
-                    alt={`ステップ ${stepNumbers[index]} の画像 ${imgIdx + 1}`}
-                    className="max-w-full h-auto mx-auto"
-                  />
-                  {getImageCaption(step, imgIdx) && (
-                    <p className="px-3 py-2 text-sm text-slate-600 bg-slate-50 border-t border-slate-200">
-                      {getImageCaption(step, imgIdx)}
-                    </p>
-                  )}
-                </div>
-              ))}
-
-              {step.videoUrl && (
-                <div>
-                  {getYouTubeEmbedUrl(step.videoUrl) ? (
-                    <div className="relative w-full rounded-lg overflow-hidden" style={{ paddingBottom: '56.25%' }}>
-                      <iframe
-                        src={getYouTubeEmbedUrl(step.videoUrl)!}
-                        title={`ステップ ${stepNumbers[index]} の動画`}
-                        className="absolute inset-0 w-full h-full"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowFullScreen
-                      />
+            return (
+              <Fragment key={step.id}>
+                {showInlineTabs && group && (
+                  <div className="bg-surface border border-ink-200 rounded-xl px-5 py-3 no-print">
+                    <p className="text-[11px] text-ink-500 mb-2 font-semibold">▼ 条件で表示を切り替え</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {zoneConds.map((cond, condIdx) => {
+                        const active = zoneSel === cond.id || (zoneSel === null && condIdx === 0);
+                        return (
+                          <button
+                            key={cond.id}
+                            onClick={() => { setSelectedConditions(prev => ({ ...prev, [group]: cond.id })); setRevealedCount(1); }}
+                            className={[
+                              'px-4 py-1.5 rounded-full text-[13px] font-semibold transition-colors',
+                              active ? 'bg-ink-900 text-white' : 'bg-surface text-ink-600 border border-ink-200 hover:border-ink-400',
+                            ].join(' ')}
+                          >
+                            {cond.label}
+                          </button>
+                        );
+                      })}
                     </div>
-                  ) : (
-                    <a
-                      href={step.videoUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm transition"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      動画を再生
-                    </a>
-                  )}
-                </div>
-              )}
-
-              {step.links && step.links.length > 0 && (
-                <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3 space-y-1.5">
-                  <p className="text-xs font-medium text-indigo-700 mb-1">関連リンク</p>
-                  {step.links.map((link) => {
-                    const href = link.type === 'instruction'
-                      ? link.driveFileId
-                        ? `/instructions/view?driveFileId=${link.driveFileId}`
-                        : `/instructions/view?id=${link.instructionId}`
-                      : link.url;
-                    return (
-                      <a
-                        key={link.id}
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-800 transition"
-                      >
-                        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
-                        {link.label}
-                      </a>
-                    );
-                  })}
-                </div>
-              )}
-
-              {step.jumps && step.jumps.length > 0 && (
-                <div className="bg-purple-50 border border-purple-200 rounded-lg px-4 py-3 space-y-1.5">
-                  <p className="text-xs font-medium text-purple-700 mb-1">条件付きジャンプ</p>
-                  {step.jumps.map((jump) => {
-                    const targetStep = sortedSteps.find(s => s.id === jump.targetStepId);
-                    const targetIdx = sortedSteps.findIndex(s => s.id === jump.targetStepId);
-                    return (
-                      <p key={jump.id} className="text-sm text-purple-800">
-                        {jump.label} → ステップ {targetIdx >= 0 ? targetIdx + 1 : '?'}{targetStep ? `. ${targetStep.title}` : ''}
-                      </p>
-                    );
-                  })}
-                  {step.jumpDefaultLabel && (
-                    <p className="text-sm text-purple-600">{step.jumpDefaultLabel} → 次のステップへ</p>
-                  )}
-                </div>
-              )}
-
-              {step.caution && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-                  <p className="text-sm text-amber-800 font-medium flex items-center gap-1.5">
-                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                    </svg>
-                    注意: {step.caution}
-                  </p>
-                </div>
-              )}
-
-              {step.checkItems && step.checkItems.length > 0 && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 space-y-2">
-                  <p className="text-xs font-medium text-blue-700 mb-1">チェック項目</p>
-                  {step.checkItems.map((item) => (
-                    <label key={item.id} className="flex items-center gap-2 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={checkStates[step.id]?.[item.id] ?? false}
-                        onChange={(e) => {
-                          setCheckStates(prev => ({
-                            ...prev,
-                            [step.id]: {
-                              ...(prev[step.id] ?? {}),
-                              [item.id]: e.target.checked,
-                            },
-                          }));
-                        }}
-                        className="w-4 h-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span
-                        className="text-sm text-blue-800"
-                        style={checkStates[step.id]?.[item.id] ? { textDecoration: 'line-through', opacity: 0.5 } : undefined}
-                      >
-                        {item.label}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-            </div>
-            {isLastRevealed && (
-              <div className="flex items-center justify-between no-print">
-                <span className="text-sm text-slate-500">
-                  {stepNumbers[index]} / {stepNumbers[visibleSteps.length - 1]} ステップ
-                </span>
-                {revealedCount < visibleSteps.length ? (
-                  <button
-                    onClick={() => setRevealedCount(c => c + 1)}
-                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow transition"
-                  >
-                    次へ →
-                  </button>
-                ) : (
-                  <span className="px-6 py-2.5 bg-emerald-100 text-emerald-700 font-bold rounded-xl">
-                    完了 ✓
-                  </span>
+                  </div>
                 )}
-              </div>
-            )}
-          </Fragment>
-          );
-        })}
-      </div>
 
-      {(!isSequential || revealedCount >= visibleSteps.length) && (
-        <div className="text-center py-6">
-          <p className="text-sm font-medium text-emerald-600">全ステップ完了</p>
+                {/* Accordion card */}
+                <div className="bg-surface border border-ink-200 rounded-[14px] overflow-hidden">
+                  {/* Header (clickable) */}
+                  <button
+                    onClick={() => setOpenStepId(isOpen ? null : step.id)}
+                    className="w-full flex items-center gap-3 px-[22px] py-4 text-left bg-transparent hover:bg-ink-50 transition-colors"
+                  >
+                    {/* Step indicator */}
+                    <div className={[
+                      'w-7 h-7 rounded-[8px] flex items-center justify-center text-[12px] font-bold shrink-0',
+                      isDone
+                        ? 'bg-accent text-white'
+                        : isOpen
+                          ? 'bg-ink-900 text-white'
+                          : 'bg-ink-100 text-ink-700',
+                    ].join(' ')}>
+                      {isDone ? <Check size={14} strokeWidth={2.5} /> : String(stepNumbers[index]).padStart(2, '0')}
+                    </div>
+                    <h2 className="flex-1 text-[15px] font-bold text-ink-900">{step.title}</h2>
+                    <span className="text-[11px] text-ink-400 shrink-0">
+                      {stepNumbers[index]} / {totalSteps}
+                    </span>
+                    <ChevronDown
+                      size={16}
+                      className={`text-ink-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+
+                  {/* Body */}
+                  {isOpen && (
+                    <div className="px-[22px] pb-[22px] pt-1 border-t border-ink-100 pl-[62px]">
+                      <div className="space-y-4 pt-3.5">
+                        {step.description && (
+                          <p className="text-ink-700 whitespace-pre-wrap leading-relaxed text-[14px]">
+                            {step.description}
+                          </p>
+                        )}
+
+                        {getStepImages(step).map((imgUrl, imgIdx) => (
+                          <div key={imgIdx} className="rounded-lg border border-ink-200 overflow-hidden">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={imgUrl} alt={`ステップ ${stepNumbers[index]} の画像 ${imgIdx + 1}`} className="max-w-full h-auto mx-auto" />
+                            {getImageCaption(step, imgIdx) && (
+                              <p className="px-3 py-2 text-[12px] text-ink-500 bg-ink-50 border-t border-ink-200">
+                                {getImageCaption(step, imgIdx)}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+
+                        {step.videoUrl && (
+                          getYouTubeEmbedUrl(step.videoUrl) ? (
+                            <div className="relative w-full rounded-lg overflow-hidden" style={{ paddingBottom: '56.25%' }}>
+                              <iframe
+                                src={getYouTubeEmbedUrl(step.videoUrl)!}
+                                title={`ステップ ${stepNumbers[index]} の動画`}
+                                className="absolute inset-0 w-full h-full"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                              />
+                            </div>
+                          ) : (
+                            <a href={step.videoUrl} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-2 text-accent-ink hover:underline text-[14px]">
+                              <ExternalLink size={14} /> 動画を再生
+                            </a>
+                          )
+                        )}
+
+                        {step.caution && (
+                          <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-[8px] text-[13px] text-warn border-l-[3px] border-warn"
+                            style={{ background: 'var(--color-warn-soft)' }}>
+                            <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                            <div><b>注意:</b> {step.caution}</div>
+                          </div>
+                        )}
+
+                        {step.links && step.links.length > 0 && (
+                          <div className="bg-info-soft border border-info/20 rounded-lg px-4 py-3 space-y-1.5">
+                            <p className="text-[11px] font-bold text-info mb-1">関連リンク</p>
+                            {step.links.map(link => {
+                              const href = link.type === 'instruction'
+                                ? link.driveFileId ? `/instructions/view?driveFileId=${link.driveFileId}` : `/instructions/view?id=${link.instructionId}`
+                                : link.url;
+                              return (
+                                <a key={link.id} href={href} target="_blank" rel="noopener noreferrer"
+                                  className="flex items-center gap-1.5 text-[13px] text-info hover:underline">
+                                  <ExternalLink size={12} className="shrink-0" /> {link.label}
+                                </a>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {step.jumps && step.jumps.length > 0 && (
+                          <div className="bg-accent-soft border border-accent/20 rounded-lg px-4 py-3 space-y-1.5">
+                            <p className="text-[11px] font-bold text-accent-ink mb-1">条件付きジャンプ</p>
+                            {step.jumps.map(jump => {
+                              const targetIdx = sortedSteps.findIndex(s => s.id === jump.targetStepId);
+                              const targetStep = sortedSteps.find(s => s.id === jump.targetStepId);
+                              return (
+                                <p key={jump.id} className="text-[13px] text-accent-ink flex items-center gap-1.5">
+                                  <GitBranch size={12} />
+                                  {jump.label} → ステップ {targetIdx >= 0 ? targetIdx + 1 : '?'}
+                                  {targetStep ? `. ${targetStep.title}` : ''}
+                                </p>
+                              );
+                            })}
+                            {step.jumpDefaultLabel && (
+                              <p className="text-[13px] text-accent">{step.jumpDefaultLabel} → 次のステップへ</p>
+                            )}
+                          </div>
+                        )}
+
+                        {step.checkItems && step.checkItems.length > 0 && (
+                          <div>
+                            <p className="text-[10px] font-bold tracking-widest uppercase text-ink-500 mb-2">チェック</p>
+                            <div className="space-y-1.5">
+                              {step.checkItems.map(item => (
+                                <label key={item.id} className="flex items-center gap-2 text-[13px] py-1 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={checkStates[step.id]?.[item.id] ?? false}
+                                    onChange={e => {
+                                      setCheckStates(prev => ({
+                                        ...prev,
+                                        [step.id]: { ...(prev[step.id] ?? {}), [item.id]: e.target.checked },
+                                      }));
+                                    }}
+                                    className="accent-accent w-4 h-4"
+                                  />
+                                  <span className={checkStates[step.id]?.[item.id] ? 'line-through opacity-50' : ''}>
+                                    {item.label}
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Complete / Next button */}
+                        <div className="flex justify-end pt-2 no-print">
+                          {isDone ? (
+                            <button
+                              onClick={() => setCompletedSteps(prev => { const s = new Set(prev); s.delete(step.id); return s; })}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg bg-ok-soft text-ok border border-ok/20"
+                            >
+                              <Check size={13} /> 完了済み
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setCompletedSteps(prev => new Set([...prev, step.id]));
+                                if (isSequential) {
+                                  setRevealedCount(c => c + 1);
+                                  const nextStep = visibleSteps[index + 1];
+                                  if (nextStep) setOpenStepId(nextStep.id);
+                                } else {
+                                  const nextStep = visibleSteps[index + 1];
+                                  if (nextStep) setOpenStepId(nextStep.id);
+                                }
+                              }}
+                              className="flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-semibold rounded-lg bg-accent hover:bg-accent-ink text-white transition-colors"
+                            >
+                              完了して次へ →
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {isLastRevealed && !isDone && revealedCount < visibleSteps.length && (
+                  <div className="flex justify-end no-print">
+                    <button
+                      onClick={() => setRevealedCount(c => c + 1)}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent-ink text-white font-bold rounded-xl transition text-[13px]"
+                    >
+                      次へ →
+                    </button>
+                  </div>
+                )}
+              </Fragment>
+            );
+          })}
+
+          {doneCount > 0 && doneCount >= totalSteps && (
+            <div className="text-center py-6 bg-ok-soft border border-ok/20 rounded-xl">
+              <p className="font-semibold text-ok">全ステップ完了 ✓</p>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {showHistory && instruction.updateHistory && (
         <ViewHistoryModal
@@ -575,15 +584,15 @@ function InstructionViewContent() {
           currentTitle={instruction.title}
           currentStepCount={instruction.steps.length}
           createdAt={instruction.createdAt}
-          onView={(snapshot) => { setViewingSnapshot(snapshot); setShowHistory(false); }}
-          onClose={() => setShowHistory(false)}
+          onView={snapshot => { setViewingSnapshot(snapshot); setShowHistory(false); setActiveTab('手順'); }}
+          onClose={() => { setShowHistory(false); setActiveTab('手順'); }}
         />
       )}
 
       {showFlowchart && (
         <FlowchartModal
           instruction={instruction}
-          onClose={() => setShowFlowchart(false)}
+          onClose={() => { setShowFlowchart(false); setActiveTab('手順'); }}
         />
       )}
     </div>
@@ -592,7 +601,11 @@ function InstructionViewContent() {
 
 export default function InstructionViewPage() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center min-h-[50vh]"><p className="text-slate-500">読み込み中...</p></div>}>
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <p className="text-ink-500">読み込み中…</p>
+      </div>
+    }>
       <InstructionViewContent />
     </Suspense>
   );
