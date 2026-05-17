@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { WorkInstruction } from '@/types/instruction';
@@ -8,6 +8,14 @@ import { getAllInstructions } from '@/lib/storage';
 import { search, SearchResult } from '@/lib/searchIndex';
 import { OFFICIAL_CATEGORIES, resolveCategory } from '@/lib/categoryRegistry';
 import CategoryChip from '@/components/CategoryChip';
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-[50vh]"><p className="text-ink-500">読み込み中…</p></div>}>
+      <SearchContent />
+    </Suspense>
+  );
+}
 
 function Highlight({ html }: { html: string }) {
   return (
@@ -18,7 +26,7 @@ function Highlight({ html }: { html: string }) {
   );
 }
 
-export default function SearchPage() {
+function SearchContent() {
   const params = useSearchParams();
   const q = params.get('q') ?? '';
 
