@@ -3,8 +3,12 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { Search, Plus, ChevronRight, Home } from 'lucide-react';
+import { Search, Plus, ChevronRight, Home, Folder, HelpCircle } from 'lucide-react';
 import HelpModal from './HelpModal';
+import DriveFolderPicker from './DriveFolderPicker';
+import GoogleSignInButton from './GoogleSignInButton';
+import { getTargetFolder, DriveFolder } from '@/lib/googleDrive';
+import { isGoogleConfigured, getAuthState } from '@/lib/googleAuth';
 
 function useBreadcrumb(pathname: string): { label: string; href?: string }[] {
   const crumbs: { label: string; href?: string }[] = [
@@ -42,9 +46,15 @@ export default function AppHeader() {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [showHelp, setShowHelp] = useState(false);
+  const [showFolderPicker, setShowFolderPicker] = useState(false);
+  const [currentFolder, setCurrentFolder] = useState<DriveFolder | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const crumbs = useBreadcrumb(pathname);
+
+  useEffect(() => {
+    setCurrentFolder(getTargetFolder());
+  }, []);
 
   // ⌘K / Ctrl+K global search hotkey
   useEffect(() => {
@@ -65,11 +75,22 @@ export default function AppHeader() {
     }
   };
 
+  const handleFolderClick = () => {
+    const auth = getAuthState();
+    if (isGoogleConfigured() && auth.isSignedIn) {
+      setShowFolderPicker(true);
+    }
+  };
+
+  const handleFolderSelected = (folder: DriveFolder | null) => {
+    setCurrentFolder(folder ?? getTargetFolder());
+  };
+
   if (pathname === '/') return null;
 
   return (
     <>
-      <header className="flex items-center gap-3 px-7 h-[60px] border-b border-ink-200 bg-surface shrink-0">
+      <header className="flex items-center gap-2 px-7 h-[60px] border-b border-ink-200 bg-surface shrink-0">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-1.5 text-[12px] text-ink-500 shrink-0">
           {crumbs.map((crumb, i) => (
@@ -112,6 +133,30 @@ export default function AppHeader() {
           </span>
         </form>
 
+        {/* Drive folder selector */}
+        <button
+          onClick={handleFolderClick}
+          title={currentFolder ? `保存先: ${currentFolder.name}` : 'Driveフォルダを指定'}
+          className="hidden sm:flex items-center gap-1.5 h-9 px-3 border border-ink-200 rounded-lg text-[12px] text-ink-600 hover:border-ink-400 hover:text-ink-900 transition-colors max-w-[160px] shrink-0"
+        >
+          <Folder size={14} className="text-ink-400 shrink-0" />
+          <span className="truncate">{currentFolder ? currentFolder.name : '未設定'}</span>
+        </button>
+
+        {/* Help */}
+        <button
+          onClick={() => setShowHelp(true)}
+          className="hidden sm:flex h-9 w-9 items-center justify-center rounded-lg border border-ink-200 text-ink-500 hover:border-ink-400 hover:text-ink-700 transition-colors shrink-0"
+          title="使い方ガイド"
+        >
+          <HelpCircle size={16} />
+        </button>
+
+        {/* Google Sign-In */}
+        <div className="shrink-0">
+          <GoogleSignInButton />
+        </div>
+
         {/* Create button */}
         <Link
           href="/instructions/new"
@@ -123,6 +168,11 @@ export default function AppHeader() {
       </header>
 
       <HelpModal open={showHelp} onClose={() => setShowHelp(false)} />
+      <DriveFolderPicker
+        open={showFolderPicker}
+        onClose={() => setShowFolderPicker(false)}
+        onSelect={handleFolderSelected}
+      />
     </>
   );
 }
