@@ -8,6 +8,7 @@ const STORAGE_KEY_FOLDER = 'drive_target_folder';
 export interface DriveFolder {
   id: string;
   name: string;
+  driveId?: string;
 }
 
 interface DriveFile {
@@ -179,17 +180,22 @@ export interface DriveFileInfo {
   name: string;
 }
 
-export async function listJsonFilesInFolder(folderId: string): Promise<DriveFileInfo[]> {
+export async function listJsonFilesInFolder(folderId: string, options?: { driveId?: string }): Promise<DriveFileInfo[]> {
+  const params: Record<string, string> = {
+    q: `'${folderId}' in parents and mimeType='application/json' and trashed=false`,
+    fields: 'files(id,name)',
+    orderBy: 'modifiedTime desc',
+    pageSize: '100',
+    supportsAllDrives: 'true',
+    includeItemsFromAllDrives: 'true',
+  };
+  if (options?.driveId) {
+    params.corpora = 'drive';
+    params.driveId = options.driveId;
+  }
   const res = await gapi.client.request<DriveFileList>({
     path: 'https://www.googleapis.com/drive/v3/files',
-    params: {
-      q: `'${folderId}' in parents and mimeType='application/json' and trashed=false`,
-      fields: 'files(id,name)',
-      orderBy: 'modifiedTime desc',
-      pageSize: '100',
-      supportsAllDrives: 'true',
-      includeItemsFromAllDrives: 'true',
-    },
+    params,
   });
   return res.result.files.map((f) => ({ id: f.id, name: f.name }));
 }
@@ -403,8 +409,9 @@ export async function saveInstructionsToDrive(
 }
 
 export async function bulkImportFromDrive(): Promise<{ imported: number; skipped: number }> {
+  const targetFolder = getTargetFolder();
   const folderId = await getTargetFolderId();
-  const files = await listJsonFilesInFolder(folderId);
+  const files = await listJsonFilesInFolder(folderId, { driveId: targetFolder?.driveId });
   let imported = 0, skipped = 0;
   for (const file of files) {
     try {

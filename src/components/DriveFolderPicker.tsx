@@ -141,7 +141,7 @@ export default function DriveFolderPicker({ open, onClose, onSelect }: DriveFold
       setTargetFolder(null);
       onSelect(null);
     } else {
-      const folder: DriveFolder = { id: current.id, name: current.name };
+      const folder: DriveFolder = { id: current.id, name: current.name, driveId: currentDriveId };
       setTargetFolder(folder);
       onSelect(folder);
     }
