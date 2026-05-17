@@ -1,4 +1,5 @@
 import { WorkInstruction } from '@/types/instruction';
+import { importInstruction } from '@/lib/storage';
 
 const DEFAULT_FOLDER_NAME = 'WorkInstructions';
 const FILE_NAME = 'work_instructions.json';
@@ -399,6 +400,26 @@ export async function saveInstructionsToDrive(
     const errorText = await res.text();
     throw new Error(`Drive API ${res.status}: ${errorText}`);
   }
+}
+
+export async function bulkImportFromDrive(): Promise<{ imported: number; skipped: number }> {
+  const folderId = await getTargetFolderId();
+  const files = await listJsonFilesInFolder(folderId);
+  let imported = 0, skipped = 0;
+  for (const file of files) {
+    try {
+      const text = await downloadDriveFile(file.id);
+      const data = JSON.parse(text);
+      const items: WorkInstruction[] = Array.isArray(data) ? data : [data];
+      for (const item of items) {
+        if (!item.id || !item.title || !Array.isArray(item.steps)) { skipped++; continue; }
+        if (!item.status) item.status = 'completed';
+        importInstruction(item);
+        imported++;
+      }
+    } catch { skipped++; }
+  }
+  return { imported, skipped };
 }
 
 export async function loadInstructionsFromDrive(): Promise<WorkInstruction[] | null> {
